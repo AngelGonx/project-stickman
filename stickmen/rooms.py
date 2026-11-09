@@ -21,6 +21,17 @@ class Room(Item):
         super().__init__(*a)
         self.wall = WALL_COLORS[self.wall_i % len(WALL_COLORS)]
 
+    def save_state(self):
+        d = {"wall": self.wall}
+        if hasattr(self, "flip"):
+            d["flip"] = self.flip
+        return d
+
+    def load_state(self, d):
+        self.wall = d.get("wall", self.wall)
+        if "flip" in d:
+            self.flip = bool(d["flip"])
+
     def F(self, h):
         """Altura sobre el piso del cuarto, en H, para los slots."""
         return self.FLOOR + h
@@ -221,6 +232,17 @@ class Garden(Room):
             return ["o_cosechar"]
         return ["o_regar"]
 
+    def save_state(self):
+        d = super().save_state()
+        d["growth"] = list(self.growth)
+        return d
+
+    def load_state(self, d):
+        super().load_state(d)
+        g = d.get("growth")
+        if isinstance(g, list) and len(g) == 3:
+            self.growth = [int(v) for v in g]
+
     def on_used(self, s, slot):
         key = getattr(s, "item_action", "")
         if key == "o_cosechar":
@@ -403,6 +425,13 @@ class Roof(Item):
         if room is not None:
             self.x = room.x
 
+    def save_state(self):
+        return {"color": self.color, "flat": self.flat}
+
+    def load_state(self, d):
+        self.color = d.get("color", self.color)
+        self.flat = bool(d.get("flat", False))
+
     def extra_menu(self, menu):
         def cycle():
             i = ROOF_COLORS.index(self.color) if self.color in ROOF_COLORS else -1
@@ -442,4 +471,113 @@ ITEM_ORDER = ["sofa", "mesa", "picnic", "pelota", "trampolin", "columpio", "resb
               "fogata", "asador", "tele", "cama", "hamaca", "escritorio", "caballete", "pesas",
               "barra", "caja", "patineta", "maceta", "arbol", "pizza", "libro"]
 INSTRUMENT_ORDER = ["piano", "bateria", "guitarra", "trompeta", "violin", "microfono", "bocina"]
-ROOM_ORDER = ["cuarto", "recamara", "comedor", "cocina", "sala", "estudio", "baño", "huerto", "techo"]
+
+
+# ============================================================================
+# Escaleras
+class StairMixin:
+    """Algo por donde se sube: stair_ends() -> (x_abajo, y_abajo, x_arriba, y_arriba)."""
+    flip = False
+
+    def stair_draw(self, p, x0, y0, x1, y1, color="#8B5A2B", rail="#475569"):
+        H = self.H
+        n = 9
+        p.setPen(QPen(QColor(color).darker(140), 1.2))
+        p.setBrush(QColor(color))
+        for i in range(n):
+            ax = x0 + (x1 - x0) * i / n
+            ay = y0 + (y1 - y0) * (i + 1) / n
+            w = (x1 - x0) / n
+            p.drawRect(QRectF(min(ax, ax + w), ay, abs(w), y0 - ay))
+        p.setPen(QPen(QColor(rail), 0.03 * H, Qt.SolidLine, Qt.RoundCap))
+        p.drawLine(QPointF(x0, y0 - 0.55 * H), QPointF(x1, y1 - 0.55 * H))
+        for i in range(0, n + 1, 3):
+            x = x0 + (x1 - x0) * i / n
+            y = y0 + (y1 - y0) * i / n
+            p.drawLine(QPointF(x, y), QPointF(x, y - 0.55 * H))
+
+    def extra_menu(self, menu):
+        super().extra_menu(menu)
+        menu.addAction(tr("Voltear escalera")).triggered.connect(lambda: setattr(self, "flip", not self.flip))
+
+
+@item_type
+class StairRoom(StairMixin, Room):
+    key, label, W, wall_i = "escaleras", "Cubo de escaleras", 1.9, 6
+
+    def stair_ends(self):
+        H = self.H
+        d = -1 if self.flip else 1
+        return (self.x - d * 0.68 * H, self.y - self.FLOOR * H,
+                self.x + d * 0.68 * H, self.y - (self.HH + self.FLOOR) * H)
+
+    def draw_inside(self, p):
+        H = self.H
+        d = -1 if self.flip else 1
+        x0, x1 = -d * 0.68 * H, d * 0.68 * H
+        self.stair_draw(p, x0, -self.FLOOR * H, x1, -(self.HH - 0.08) * H)
+
+    def draw(self, p):
+        super().draw(p)
+        H = self.H
+        d = -1 if self.flip else 1   # hueco en el techo para salir arriba
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(self.wall))
+        p.drawRect(QRectF(d * 0.2 * H if d > 0 else -0.85 * H, -self.HH * H, 0.65 * H, 0.08 * H))
+
+
+@item_type
+class Stairs(StairMixin, Item):
+    key, label, W, HH = "escalera", "Escalera exterior", 1.6, 2.38
+
+    def save_state(self):
+        return {"flip": self.flip}
+
+    def load_state(self, d):
+        self.flip = bool(d.get("flip", False))
+
+    def stair_ends(self):
+        H = self.H
+        d = -1 if self.flip else 1
+        return self.x - d * 0.72 * H, self.y, self.x + d * 0.72 * H, self.y - self.HH * H
+
+    def draw(self, p):
+        H = self.H
+        d = -1 if self.flip else 1
+        self.stair_draw(p, -d * 0.72 * H, 0, d * 0.72 * H, -self.HH * H, "#9CA3AF", "#374151")
+        p.setPen(QPen(QColor("#374151"), 0.05 * H))
+        p.drawLine(QPointF(d * 0.7 * H, 0), QPointF(d * 0.7 * H, -self.HH * H))
+
+
+def stairs_in(crew):
+    out = []
+    for it in crew.items:
+        if hasattr(it, "stair_ends") and it.on_ground and not it.dragging:
+            out.append((it, it.stair_ends()))
+    return out
+
+
+def find_route(crew, y0, yt, tol):
+    """Busca qué escaleras tomar para ir del nivel y0 al nivel yt (BFS por pisos)."""
+    if abs(y0 - yt) < tol:
+        return []
+    st = stairs_in(crew)
+    frontier = [(y0, [])]
+    seen = [y0]
+    while frontier:
+        y, path = frontier.pop(0)
+        for it, (xb, yb, xt, ytop) in st:
+            for (ya, xa, yb2, xb2) in ((yb, xb, ytop, xt), (ytop, xt, yb, xb)):
+                if abs(ya - y) < tol:
+                    np_ = path + [(it, xa, ya, xb2, yb2)]
+                    if abs(yb2 - yt) < tol:
+                        return np_
+                    if all(abs(yb2 - s) > tol for s in seen):
+                        seen.append(yb2)
+                        frontier.append((yb2, np_))
+    return None
+
+
+ROOM_ORDER = ["cuarto", "recamara", "comedor", "cocina", "sala", "estudio", "baño", "huerto",
+              "escaleras", "escalera", "techo"]
+BUILD_KEYS = set(ROOM_ORDER)

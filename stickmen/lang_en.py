@@ -117,4 +117,9 @@ EN = {
     "Guardar": "Save", "Cancelar": "Cancel", "Nombre:": "Name:", "Tipo de stickman": "Stickman type",
     "Colores": "Colors", "Brillo": "Brightness", "Cosméticos (puedes elegir varios)": "Cosmetics (pick as many as you like)",
     "Sin nombre": "Unnamed", "Cuerpo": "Body", "Accesorios": "Accessories", "Ojos": "Eyes",
+    # escaleras, pintura, guardado
+    "Cubo de escaleras": "Stairwell", "Escalera exterior": "Outdoor stairs", "Voltear escalera": "Flip stairs",
+    "Hora de pintar": "Painting time", "¡A pintar!": "Let's paint!", "¡Ta-da!": "Ta-da!",
+    "¡Mira mi dibujo!": "Look at my drawing!", "¿Te gusta?": "Do you like it?", "¡Lo hice yo!": "I made it!",
+    "¡Terminé!": "Done!", "Quitar todas las construcciones": "Remove all buildings",
 }

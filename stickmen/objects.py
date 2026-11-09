@@ -54,6 +54,9 @@ class Item(QWidget):
         self.grab = QPointF()
         self.svx = self.svy = 0.0
         self.last_cursor = None
+        self.parent = None
+        self.rel = (0.0, 0.0)
+        self.support_room = None
         self.slots = self.make_slots()
 
     # ---- para subclases
@@ -126,10 +129,40 @@ class Item(QWidget):
             self.x, self.y = nx, ny
         elif not self.on_ground:
             self.physics(dt)
+        elif self.parent is not None:
+            if self.parent in self.crew.items and not self.parent.hidden:
+                # va dentro/encima de un cuarto: se mueve con él
+                self.x = self.parent.x + self.rel[0]
+                self.y = self.parent.y + self.rel[1]
+            else:
+                self.parent = None
+                self.on_ground = False
+                self.release_users()
         elif self.crew.has_rooms and self.support(self.y) > self.y + 2:
             self.on_ground = False      # le quitaron lo que tenía abajo
             self.release_users()
         self.extra_tick(dt)
+
+    def attach(self, room):
+        self.parent = room
+        if room is not None:
+            self.rel = (self.x - room.x, self.y - room.y)
+
+    def descendants(self):
+        out, todo = [], [self]
+        while todo:
+            cur = todo.pop()
+            for it in self.crew.items:
+                if it.parent is cur and it not in out:
+                    out.append(it)
+                    todo.append(it)
+        return out
+
+    def save_state(self):
+        return {}
+
+    def load_state(self, d):
+        pass
 
     def physics(self, dt):
         L, Rb, top = desktop_bounds()
@@ -147,6 +180,7 @@ class Item(QWidget):
             self.vx = self.vy = 0.0
             self.on_ground = True
             self.on_land(self.support_room)
+            self.attach(self.support_room)
 
     def sync(self):
         self.setVisible(not self.hidden and self.crew.visible)
@@ -167,6 +201,11 @@ class Item(QWidget):
     def mousePressEvent(self, e):
         if e.button() == Qt.LeftButton:
             self.release_users()
+            for it in self.descendants():     # lo de adentro se queda adentro
+                it.release_users()
+                if getattr(it, "held_by", None) is not None:
+                    it.held_by = None
+            self.parent = None
             self.dragging = True
             self.on_ground = False
             self.svx = self.svy = 0.0
@@ -433,6 +472,7 @@ class Skateboard(Item):
     def extra_tick(self, dt):
         u = self.slots[0].user
         if u is not None and u.state == "act" and u.item is self:
+            self.parent = None
             self.x = u.hx
             g = ground_at(self.x) or self.y
             self.y = g - u.pose["lift"] * self.H
@@ -461,6 +501,12 @@ class Plant(Item):
 
     def on_used(self, s, slot):
         self.growth = min(5, self.growth + 1)
+
+    def save_state(self):
+        return {"growth": self.growth}
+
+    def load_state(self, d):
+        self.growth = int(d.get("growth", 0))
 
     def extra_menu(self, menu):
         menu.addAction(tr("Podar (volver a chiquita)")).triggered.connect(lambda: setattr(self, "growth", 0))
@@ -513,6 +559,12 @@ class Pizza(Item):
 
     def on_used(self, s, slot):
         self.slices = max(0, self.slices - 1)
+
+    def save_state(self):
+        return {"slices": self.slices}
+
+    def load_state(self, d):
+        self.slices = int(d.get("slices", 8))
 
     def extra_menu(self, menu):
         menu.addAction(tr("Pedir otra pizza")).triggered.connect(lambda: setattr(self, "slices", 8))
@@ -664,6 +716,7 @@ class Ball(Item):
                 if abs(self.vx) < 8:
                     self.vx = 0.0
                     self.on_ground = True
+                    self.attach(self.support_room)
 
     def mousePressEvent(self, e):
         self.held_by = None
@@ -966,6 +1019,12 @@ class Easel(Item):
 
     def extra_menu(self, menu):
         menu.addAction(tr("Lienzo nuevo")).triggered.connect(lambda: self.strokes.clear())
+
+    def save_state(self):
+        return {"strokes": [[c.name(), x0, y0, x1, y1] for c, x0, y0, x1, y1 in self.strokes]}
+
+    def load_state(self, d):
+        self.strokes = [(QColor(c), x0, y0, x1, y1) for c, x0, y0, x1, y1 in d.get("strokes", [])]
 
     def draw(self, p):
         H = self.H

@@ -2,9 +2,10 @@
 from .core import *  # noqa: F401,F403
 from .actions import (ACTIONS, SOLO, SOCIAL, FIGHT_CLOSE, FIGHT_FAR, pose_stand, pose_walk,
                       pose_wave, pose_watch, pose_sit, pose_guard, pose_flail, pose_dangle,
-                      CROUCH, TUCK, REACH, FALL, lerp_pose, P)
+                      CROUCH, TUCK, REACH, FALL, lerp_pose, P, W)
 from .draw import draw_stickman, draw_impact, draw_bubble, draw_speed_lines, bubble_top
 from .objects import Ball
+from .rooms import find_route
 
 
 class Stickman(QWidget):
@@ -95,6 +96,10 @@ class Stickman(QWidget):
         self.game = None
         self.prop_override = None
         self.item_action = None
+        self.level_y = None
+        self.route = []
+        self.route_done = None
+        self.route_t = 0.0
         self.climb_from = self.climb_to = 0.0
         self.climb_dur = 1.0
 
@@ -113,6 +118,8 @@ class Stickman(QWidget):
     def set_state(self, s, dur=0.0):
         if s != "act":
             self.act = None
+        if s in ("air", "drag"):
+            self.level_y = None
         self.state, self.timer = s, dur
 
     def grounded(self):
@@ -306,7 +313,113 @@ class Stickman(QWidget):
         slot.user = self
         self.item, self.slot = item, slot
         self.goto_t = 12.0
-        self.set_state("goto")
+        # ¿está en otro piso? buscar escaleras
+        lvl = self.slot_level(item, slot)
+        g = ground_at(self.hx) or self.last_ground
+        cur = self.level_y if self.level_y is not None else g
+        tol = 0.35 * self.H
+        route = find_route(self.crew, cur, lvl, tol) if abs(lvl - cur) > tol else None
+        if route:
+            segs = []
+            for st, xa, ya, xb, yb in route:
+                segs.append(("walk", xa, ya))
+                segs.append(("stairs", xa, ya, xb, yb, st))
+            segs.append(("walk", lambda: item.slot_pos(slot, self)[0], lvl))
+            self.start_route(segs, self.arrive_slot)
+        else:
+            self.set_state("goto")
+
+    def slot_level(self, item, slot):
+        """La superficie (y) sobre la que se para el que usa ese lugar."""
+        if item.is_room:
+            return item.y - item.FLOOR * self.H
+        return item.y
+
+    # ---------------- rutas por escaleras ----------------
+    def start_route(self, segs, done):
+        self.route = list(segs)
+        self.route_done = done
+        self.route_t = 40.0
+        self.set_state("route")
+
+    def abort_route(self):
+        self.route = []
+        self.route_done = None
+        self.leave_item()
+        self.vx = self.vy = 0.0
+        self.thrown = False
+        self.set_state("air")
+
+    def update_route(self, dt):
+        self.route_t -= dt
+        if self.route_t <= 0:
+            self.abort_route()
+            return
+        if not self.route:
+            done, self.route_done = self.route_done, None
+            if done:
+                done()
+            else:
+                self.resume()
+            return
+        seg = self.route[0]
+        cy = contact(self.joints, self.H, self.R)
+        tol = 0.35 * self.H
+        if seg[0] == "walk":
+            x = seg[1]() if callable(seg[1]) else seg[1]
+            lvl = seg[2]
+            g = ground_at(self.hx) or self.last_ground
+            surface = g if abs(lvl - g) < tol else lvl
+            self.walk_to(x, dt, WALK_SPEED * 1.2)
+            self.hy = surface - cy
+            if abs(x - self.hx) < 4:
+                self.hx = x
+                self.level_y = None if abs(lvl - g) < tol else lvl
+                self.route.pop(0)
+            elif not self.moving:
+                self.abort_route()
+        else:
+            _, xa, ya, xb, yb, st = seg
+            if st not in self.crew.items or st.dragging:
+                self.abort_route()
+                return
+            self.facing = sign(xb - xa)
+            self.moving = True
+            nx = self.hx + self.facing * WALK_SPEED * 0.85 * dt
+            self.phase = (self.phase + dt * WALK_SPEED * 0.85 / stride(WALK_SPEED, self.H)) % 1.0
+            k = clamp((nx - xa) / (xb - xa), 0.0, 1.0) if xb != xa else 1.0
+            self.hx = xa + (xb - xa) * k
+            self.hy = ya + (yb - ya) * k - cy
+            if k >= 1.0:
+                g = ground_at(self.hx) or self.last_ground
+                self.level_y = None if abs(yb - g) < tol else yb
+                self.route.pop(0)
+
+    def arrive_slot(self, allow_climb=True):
+        it, sl = self.item, self.slot
+        if it is None or it not in self.crew.items or it.dragging:
+            self.leave_item()
+            self.decide()
+            return
+        self.hx = it.slot_pos(sl, self)[0]
+        self.facing = sl.face if sl.face else random.choice((-1, 1))
+        self.item_action = random.choice(it.actions_for(sl))
+        self.raise_()
+        for it2 in self.crew.items:
+            if it2.layer >= 3:
+                it2.raise_()
+        target = self.slot_hip_target(0.0, 0.47 * self.H)
+        floor_here = self.level_y if self.level_y is not None else (ground_at(self.hx) or self.last_ground)
+        if allow_climb and not sl.no_climb and target < floor_here - 0.85 * self.H:
+            self.climb_from, self.climb_to = self.hy, target    # sin escaleras: trepa
+            self.set_state("climb", 0.8 + min(1.2, (floor_here - target) / self.H * 0.35))
+            self.climb_dur = self.timer
+        else:
+            self.begin_item_action()
+        self.level_y = self.slot_level(it, sl)
+        g = ground_at(self.hx) or self.last_ground
+        if abs(self.level_y - g) < 0.35 * self.H:
+            self.level_y = None
 
     def update_goto(self, dt):
         it, sl = self.item, self.slot
@@ -324,20 +437,7 @@ class Stickman(QWidget):
                 self.decide()
                 return
             self.hx = tx
-            self.facing = sl.face if sl.face else random.choice((-1, 1))
-            self.item_action = random.choice(it.actions_for(sl))
-            self.raise_()
-            for it2 in self.crew.items:
-                if it2.layer >= 3:
-                    it2.raise_()
-            target = self.slot_hip_target(0.0, 0.47 * self.H)
-            g = ground_at(self.hx) or self.last_ground
-            if not sl.no_climb and target < g - 0.85 * self.H:
-                self.climb_from, self.climb_to = self.hy, target    # ¡a subirse!
-                self.set_state("climb", 0.55 + min(0.6, (g - target) / self.H * 0.12))
-                self.climb_dur = self.timer
-            else:
-                self.begin_item_action()
+            self.arrive_slot()
 
     def begin_item_action(self):
         it, sl = self.item, self.slot
@@ -376,7 +476,17 @@ class Stickman(QWidget):
             it.on_used(self, sl)
         self.leave_item()
         g = ground_at(self.hx) or self.last_ground
+        if self.level_y is not None and self.game is None:
+            route = find_route(self.crew, self.level_y, g, 0.35 * self.H)
+            if route:
+                segs = []
+                for st, xa, ya, xb, yb in route:
+                    segs.append(("walk", xa, ya))
+                    segs.append(("stairs", xa, ya, xb, yb, st))
+                self.start_route(segs, None)
+                return
         if self.hy < g - contact(self.joints, self.H, self.R) - 0.3 * self.H and self.game is None:
+            self.level_y = None
             self.vx, self.vy = self.facing * 90, -250     # brinca para bajarse
             self.thrown = False
             self.set_state("air")
@@ -679,6 +789,12 @@ class Stickman(QWidget):
             return pose_guard(t, sh)
         if s == "drag":
             return pose_dangle(t, clamp(-self.svx * self.facing * 0.04, -45, 45))
+        if s == "route":
+            on_stairs = bool(self.route) and self.route[0][0] == "stairs"
+            if on_stairs:
+                p = pose_walk(self.phase, amp=1.0, lean=12)
+                return W(p, thF=p["thF"] + 18, thB=p["thB"] + 18, shF=p["shF"] - 10, shB=p["shB"] - 10)
+            return pose_walk(self.phase) if self.moving else pose_stand(t)
         if s == "climb":
             k = math.sin(t * 12)
             return P(lean=10, thB=60 + 25 * k, shB=-30, thF=60 - 25 * k, shF=-30,
@@ -726,6 +842,8 @@ class Stickman(QWidget):
             self.update_drag(dt)
         elif s == "climb":
             self.update_climb(dt)
+        elif s == "route":
+            self.update_route(dt)
         elif s == "air":
             self.update_air(dt, L, Rb, top, m)
         else:

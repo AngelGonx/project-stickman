@@ -1290,3 +1290,214 @@ class PhoneCall(Game):
 
 GAME_ORDER = ["parkour", "cuerda", "limbo", "beisbol", "pelota", "carreras", "piedra",
               "tira", "rana", "conga", "llamada"]
+
+
+# ============================================================================
+# Hora de pintar: pintan en caballetes y luego enseñan su obra a la pantalla
+ART_THEMES = ["sol", "casa", "flor", "corazon", "arcoiris", "retrato", "carita", "gato", "montañas", "abstracto"]
+
+
+def art_strokes(theme, color, seed):
+    """Lista de trazos (funciones p, r) que forman un dibujo; se revelan uno por uno."""
+    rnd = random.Random(seed)
+    C = QColor
+    S_ = []
+
+    def bg(c):
+        S_.append(lambda p, r: (p.setPen(Qt.NoPen), p.setBrush(C(c)), p.drawRect(r)))
+
+    def rect(c, x, y, w, h):
+        S_.append(lambda p, r: (p.setPen(Qt.NoPen), p.setBrush(C(c)),
+                                p.drawRect(QRectF(r.x() + x * r.width(), r.y() + y * r.height(),
+                                                  w * r.width(), h * r.height()))))
+
+    def circ(c, x, y, rad):
+        S_.append(lambda p, r: (p.setPen(Qt.NoPen), p.setBrush(C(c)),
+                                p.drawEllipse(QPointF(r.x() + x * r.width(), r.y() + y * r.height()),
+                                              rad * r.width(), rad * r.width())))
+
+    def line(c, x0, y0, x1, y1, w=0.03):
+        S_.append(lambda p, r: (p.setPen(QPen(C(c), w * r.width(), Qt.SolidLine, Qt.RoundCap)),
+                                p.drawLine(QPointF(r.x() + x0 * r.width(), r.y() + y0 * r.height()),
+                                           QPointF(r.x() + x1 * r.width(), r.y() + y1 * r.height()))))
+
+    def poly(c, pts):
+        S_.append(lambda p, r: (p.setPen(Qt.NoPen), p.setBrush(C(c)),
+                                p.drawPolygon(QPolygonF([QPointF(r.x() + x * r.width(), r.y() + y * r.height())
+                                                         for x, y in pts]))))
+
+    if theme == "sol":
+        bg("#BAE6FD"); rect("#4ADE80", 0, 0.75, 1, 0.25); circ("#FACC15", 0.7, 0.3, 0.13)
+        for i in range(8):
+            a = i * math.pi / 4
+            line("#FACC15", 0.7 + math.cos(a) * 0.17, 0.3 + math.sin(a) * 0.22, 0.7 + math.cos(a) * 0.25,
+                 0.3 + math.sin(a) * 0.32)
+        circ("#FFFFFF", 0.2, 0.25, 0.08); circ("#FFFFFF", 0.3, 0.25, 0.09)
+    elif theme == "casa":
+        bg("#E0F2FE"); rect("#86EFAC", 0, 0.8, 1, 0.2); rect("#FDE68A", 0.25, 0.45, 0.45, 0.38)
+        poly("#DC2626", [(0.2, 0.47), (0.75, 0.47), (0.475, 0.18)]); rect("#92400E", 0.42, 0.62, 0.12, 0.21)
+        rect("#7DD3FC", 0.29, 0.52, 0.1, 0.1); circ("#FACC15", 0.85, 0.15, 0.07)
+    elif theme == "flor":
+        bg("#FEF9C3"); line("#16A34A", 0.5, 0.95, 0.5, 0.45, 0.04); poly("#22C55E", [(0.5, 0.75), (0.3, 0.65), (0.5, 0.7)])
+        poly("#22C55E", [(0.5, 0.65), (0.7, 0.55), (0.5, 0.6)])
+        for i in range(6):
+            a = i * math.pi / 3
+            circ(color.name(), 0.5 + math.cos(a) * 0.12, 0.35 + math.sin(a) * 0.15, 0.08)
+        circ("#FACC15", 0.5, 0.35, 0.07)
+    elif theme == "corazon":
+        bg("#FCE7F3"); circ("#EF4444", 0.38, 0.4, 0.15); circ("#EF4444", 0.62, 0.4, 0.15)
+        poly("#EF4444", [(0.24, 0.47), (0.76, 0.47), (0.5, 0.85)])
+        for _ in range(4):
+            circ("#F9A8D4", rnd.uniform(0.1, 0.9), rnd.uniform(0.1, 0.9), 0.03)
+    elif theme == "arcoiris":
+        bg("#E0F2FE")
+        for i, c in enumerate(["#EF4444", "#F97316", "#FACC15", "#22C55E", "#3B82F6", "#8B5CF6"]):
+            rad = 0.42 - i * 0.05
+            S_.append(lambda p, r, c=c, rad=rad: (p.setPen(QPen(C(c), 0.05 * r.width())), p.setBrush(Qt.NoBrush),
+                                                 p.drawArc(QRectF(r.x() + (0.5 - rad) * r.width(),
+                                                                  r.y() + (0.85 - rad * 1.3) * r.height(),
+                                                                  2 * rad * r.width(), 2 * rad * 1.3 * r.height()),
+                                                           0, 180 * 16)))
+        circ("#FFFFFF", 0.12, 0.82, 0.08); circ("#FFFFFF", 0.88, 0.82, 0.08)
+    elif theme == "retrato":
+        bg("#F5F5F4"); c = color.name()
+        circ(c, 0.5, 0.25, 0.1); line(c, 0.5, 0.33, 0.5, 0.65, 0.04); line(c, 0.5, 0.65, 0.38, 0.9, 0.04)
+        line(c, 0.5, 0.65, 0.62, 0.9, 0.04); line(c, 0.5, 0.42, 0.3, 0.2, 0.04); line(c, 0.5, 0.42, 0.7, 0.2, 0.04)
+        circ("#111111", 0.47, 0.23, 0.012); circ("#111111", 0.53, 0.23, 0.012)
+        S_.append(lambda p, r: (p.setPen(QPen(C("#111111"), 0.012 * r.width())), p.setBrush(Qt.NoBrush),
+                                p.drawArc(QRectF(r.x() + 0.45 * r.width(), r.y() + 0.22 * r.height(),
+                                                 0.1 * r.width(), 0.08 * r.height()), 200 * 16, 140 * 16)))
+    elif theme == "carita":
+        bg("#DBEAFE"); circ("#FACC15", 0.5, 0.5, 0.3); circ("#111111", 0.4, 0.42, 0.035); circ("#111111", 0.6, 0.42, 0.035)
+        S_.append(lambda p, r: (p.setPen(QPen(C("#111111"), 0.03 * r.width(), Qt.SolidLine, Qt.RoundCap)),
+                                p.setBrush(Qt.NoBrush),
+                                p.drawArc(QRectF(r.x() + 0.33 * r.width(), r.y() + 0.4 * r.height(),
+                                                 0.34 * r.width(), 0.3 * r.height()), 200 * 16, 140 * 16)))
+    elif theme == "gato":
+        bg("#FDE68A"); poly("#6B7280", [(0.3, 0.35), (0.35, 0.1), (0.45, 0.3)])
+        poly("#6B7280", [(0.7, 0.35), (0.65, 0.1), (0.55, 0.3)]); circ("#6B7280", 0.5, 0.48, 0.25)
+        circ("#22C55E", 0.4, 0.43, 0.04); circ("#22C55E", 0.6, 0.43, 0.04); circ("#F472B6", 0.5, 0.55, 0.025)
+        for dy in (-0.03, 0.03):
+            line("#111111", 0.15, 0.55 + dy, 0.38, 0.56, 0.008); line("#111111", 0.62, 0.56, 0.85, 0.55 + dy, 0.008)
+    elif theme == "montañas":
+        bg("#BFDBFE"); circ("#FDBA74", 0.8, 0.22, 0.09)
+        poly("#64748B", [(0.0, 0.9), (0.35, 0.3), (0.7, 0.9)]); poly("#475569", [(0.4, 0.9), (0.72, 0.4), (1.0, 0.9)])
+        poly("#FFFFFF", [(0.28, 0.42), (0.35, 0.3), (0.42, 0.42)]); rect("#4ADE80", 0, 0.88, 1, 0.12)
+    else:
+        bg("#FFFFFF")
+        for _ in range(12):
+            c = QColor.fromHsvF(rnd.random(), rnd.uniform(0.5, 1), rnd.uniform(0.6, 1)).name()
+            if rnd.random() < 0.5:
+                circ(c, rnd.uniform(0.1, 0.9), rnd.uniform(0.1, 0.9), rnd.uniform(0.04, 0.15))
+            else:
+                line(c, rnd.uniform(0, 1), rnd.uniform(0, 1), rnd.uniform(0, 1), rnd.uniform(0, 1), rnd.uniform(0.02, 0.06))
+    return S_
+
+
+def draw_art(p, r, strokes, k):
+    n = len(strokes)
+    shown = int(n * clamp(k, 0, 1) + 0.999)
+    p.save()
+    p.setClipRect(r)
+    p.setPen(Qt.NoPen)
+    p.setBrush(QColor("#FFFFFF"))
+    p.drawRect(r)
+    for f in strokes[:shown]:
+        f(p, r)
+    p.restore()
+    p.setPen(QPen(QColor("#92400E"), max(2.0, r.width() * 0.04)))
+    p.setBrush(Qt.NoBrush)
+    p.drawRect(r)
+
+
+SHOW_LINES = ["¡Ta-da!", "¡Mira mi dibujo!", "¿Te gusta?", "¡Lo hice yo!", "¡Terminé!"]
+
+
+@game
+class PaintTime(Game):
+    key, label = "pintar", "Hora de pintar"
+    min_p, max_p, span, overlay = 2, 4, 7.0, True
+    weight = 9
+
+    def setup(self):
+        n = len(self.players)
+        for i, s in enumerate(self.players):
+            self.spot[s] = (self.gx((i - (n - 1) / 2) * 1.7 - 0.3), 1)
+        self.art = {s: art_strokes(random.choice(ART_THEMES), QColor(s.spec["color"]), random.random())
+                    for s in self.players}
+        self.speed = {s: random.uniform(0.8, 1.15) for s in self.players}
+
+    def begin(self):
+        self.paint_dur = random.uniform(10, 14)
+        self.show_dur = 5.5
+        for s in self.players:
+            s.prop_override = "brush"
+            s.say("¡A pintar!", 1.2)
+        self.showing = False
+
+    def progress(self, s):
+        return clamp(self.t * self.speed[s] / self.paint_dur, 0, 1)
+
+    def play(self, s, dt):
+        s.moving = False
+        s.facing = 1
+
+    def play_pose(self, s):
+        if not self.showing:
+            k = math.sin(s.t * 4 + id(s) % 5)
+            done = self.progress(s) >= 1
+            if done:
+                return W(pose_stand(s.t), uaF=60, faF=90, uaB=-20, faB=10, tilt=-6)
+            return S(uaF=95 + 20 * k, faF=110 + 25 * k, uaB=10, faB=80, tilt=-4, lean=3)
+        b = abs(math.sin(s.t * 6))
+        return S(uaF=168, faF=176, uaB=165, faB=174, tilt=-4, lift=0.05 * b)
+
+    def update(self, dt):
+        if not self.showing and self.t > self.paint_dur / min(self.speed.values()):
+            self.showing = True
+            self.show_t = self.t
+            for i, s in enumerate(self.players):
+                s.prop_override = None
+                QTimer.singleShot(int(i * 350), lambda s=s: s.say(random.choice(SHOW_LINES), 2.2))
+        if self.showing and self.t - self.show_t > self.show_dur:
+            self.end(winners=self.players)
+
+    def easel_x(self, s):
+        return self.spot[s][0] + 0.62 * self.H
+
+    def draw_overlay(self, p):
+        if self.phase != "play" or self.done:
+            return
+        H = self.H
+        for s in self.players:
+            if s not in self.spot:
+                continue
+            ex, g = self.easel_x(s), self.ground
+            p.setPen(QPen(QColor("#92400E"), 0.035 * H, Qt.SolidLine, Qt.RoundCap))
+            p.drawLine(QPointF(ex - 0.28 * H, g), QPointF(ex, g - 1.35 * H))
+            p.drawLine(QPointF(ex + 0.28 * H, g), QPointF(ex, g - 1.35 * H))
+            p.drawLine(QPointF(ex, g - 0.95 * H), QPointF(ex + 0.14 * H, g))
+            if not self.showing:
+                r = QRectF(ex - 0.28 * H, g - 1.32 * H, 0.56 * H, 0.46 * H)
+                draw_art(p, r, self.art[s], self.progress(s))
+            else:
+                hands = QPointF(s.hx, s.hy) + (s.joints["haF"] + s.joints["haB"]) * 0.5
+                w, h = 0.95 * H, 0.75 * H
+                r = QRectF(hands.x() - w / 2, hands.y() - h + 0.05 * H, w, h)
+                draw_art(p, r, self.art[s], 1.0)
+                el = self.t - self.show_t
+                p.setPen(Qt.NoPen)
+                for i in range(3):
+                    k = (el * 0.6 + i / 3) % 1.0
+                    c = QColor("#F43F5E")
+                    c.setAlphaF(1 - k)
+                    p.setBrush(c)
+                    hc = QPointF(r.center().x() + (i - 1) * 0.3 * H, r.top() - k * 0.6 * H)
+                    sz = 0.05 * H
+                    p.drawEllipse(hc + QPointF(-sz * 0.5, 0), sz * 0.6, sz * 0.6)
+                    p.drawEllipse(hc + QPointF(sz * 0.5, 0), sz * 0.6, sz * 0.6)
+                    p.drawPolygon(QPolygonF([hc + QPointF(-sz * 1.05, sz * 0.15), hc + QPointF(sz * 1.05, sz * 0.15),
+                                             hc + QPointF(0, sz * 1.2)]))
+
+
+GAME_ORDER.append("pintar")

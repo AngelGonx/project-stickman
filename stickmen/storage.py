@@ -90,3 +90,15 @@ def import_backup(path):
 
 def default_specs():
     return [normalize(s) for s in ROSTER]
+
+
+BUILD = "construcciones.json"
+
+
+def load_build():
+    data = _read(BUILD, [])
+    return data if isinstance(data, list) else []
+
+
+def save_build(items):
+    _write(BUILD, items)

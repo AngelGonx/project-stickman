@@ -4,7 +4,7 @@ from .actions import ACTIONS, SOLO, SOCIAL
 from .draw import draw_stickman
 from .stickman import Stickman
 from .objects import ITEM_TYPES
-from .rooms import ITEM_ORDER, INSTRUMENT_ORDER, ROOM_ORDER
+from .rooms import ITEM_ORDER, INSTRUMENT_ORDER, ROOM_ORDER, BUILD_KEYS
 from .games import GAMES, GAME_ORDER
 from . import storage, i18n
 from .i18n import tr
@@ -41,12 +41,68 @@ class Crew:
     def start(self):
         session = storage.load_session()
         specs = session if session is not None else storage.default_specs()
+        self.load_build()
         for sp in specs:
             self.spawn(sp, save=False)
         self.save_session()
 
     def save_session(self):
         storage.save_session([m.spec for m in self.members])
+        self.save_build()
+
+    # ---------------- construcciones ----------------
+    def kept_items(self):
+        """Cuartos, techos y escaleras, y lo que está dentro o pegado a ellos."""
+        rooms = [it for it in self.items if it.is_room]
+        keep = []
+        for it in self.items:
+            if it.key in BUILD_KEYS or it.hidden:
+                keep.append(it) if it.key in BUILD_KEYS else None
+                continue
+            p, inside = it.parent, False
+            while p is not None:
+                if p.is_room:
+                    inside = True
+                    break
+                p = p.parent
+            if not inside and it.on_ground:
+                for r in rooms:     # pegado a un costado, al mismo nivel
+                    gap = abs(it.x - r.x) - (r.W + it.W) * HEIGHT / 2
+                    if abs(it.y - r.y) < 6 and gap < 0.3 * HEIGHT:
+                        inside = True
+                        break
+            if inside:
+                keep.append(it)
+        return keep
+
+    def save_build(self):
+        data = []
+        for it in self.kept_items():
+            if it.dragging:
+                continue
+            data.append({"key": it.key, "x": round(it.x, 1), "y": round(it.y, 1), "state": it.save_state()})
+        storage.save_build(data)
+
+    def load_build(self):
+        data = [d for d in storage.load_build() if isinstance(d, dict) and d.get("key") in ITEM_TYPES]
+        data.sort(key=lambda d: -float(d.get("y", 0)))       # de abajo hacia arriba
+        for d in data:
+            try:
+                it = ITEM_TYPES[d["key"]](self, float(d["x"]), float(d["y"]))
+                it.load_state(d.get("state", {}))
+            except Exception:
+                continue
+            it.on_ground = True
+            self.items.append(it)
+            self.has_rooms = any(i.is_room for i in self.items)
+            it.support(it.y)
+            if it.support_room is not None and abs(it.support(it.y) - it.y) < 3:
+                it.attach(it.support_room)
+            elif abs((ground_at(it.x) or it.y) - it.y) > 3:
+                it.on_ground = False        # ya no hay en qué apoyarse: que caiga
+            it.sync()
+            it.show()
+        self.restack()
 
     def on_quit(self):
         self.save_session()
@@ -110,12 +166,19 @@ class Crew:
             it.held_by = None
         if it in self.items:
             self.items.remove(it)
+        for other in self.items:
+            if other.parent is it:
+                other.parent = None
+                other.on_ground = False
         it.close()
         it.deleteLater()
 
-    def clear_items(self):
+    def clear_items(self, build=False):
         for it in list(self.items):
-            self.remove_item(it)
+            if (it.key in BUILD_KEYS) == build:
+                self.remove_item(it)
+        if build:
+            self.save_build()
 
     # ---------------- reloj ----------------
     def tick(self):
@@ -133,7 +196,7 @@ class Crew:
         self.has_rooms = any(it.is_room for it in self.items)
         for m in list(self.members):
             m.update_logic(dt)
-        for it in list(self.items):
+        for it in sorted(self.items, key=lambda i: -i.y):     # de abajo hacia arriba
             it.tick(dt)
         for g in list(self.games):
             g.tick(dt)
@@ -345,10 +408,12 @@ class Crew:
             ins.addAction(tr(ITEM_TYPES[k].label)).triggered.connect(lambda _=False, k=k: self.add_item(k))
         rooms = m.addMenu(tr("Cuartos y techos"))
         for k in ROOM_ORDER:
-            if k == "techo":
+            if k in ("escaleras", "techo"):
                 rooms.addSeparator()
             rooms.addAction(tr(ITEM_TYPES[k].label)).triggered.connect(lambda _=False, k=k: self.add_item(k))
-        m.addAction(tr("Quitar todos los objetos")).triggered.connect(self.clear_items)
+        m.addAction(tr("Quitar todos los objetos")).triggered.connect(lambda: self.clear_items(False))
+        rooms.addSeparator()
+        rooms.addAction(tr("Quitar todas las construcciones")).triggered.connect(lambda: self.clear_items(True))
 
         gm = m.addMenu(tr("Juegos"))
         for k in GAME_ORDER:
