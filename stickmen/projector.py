@@ -19,20 +19,22 @@ MAX_FILES = 4000
 
 
 class PhotoLibrary:
-    """Busca imágenes en segundo plano en las carpetas que elijas."""
+    """Busca archivos (fotos o música) en segundo plano en las carpetas que elijas."""
 
-    def __init__(self):
+    def __init__(self, exts=None, locs=None, min_size=25000, small_ok=(".gif",)):
+        self.exts = exts or IMG_EXT
+        self.locs = locs or (QStandardPaths.PicturesLocation, QStandardPaths.DesktopLocation,
+                             QStandardPaths.DownloadLocation)
+        self.min_size, self.small_ok = min_size, small_ok
         self.files = []
         self.scanning = False
         self.dirs = []
         self.whole = False
         self._gen = 0
 
-    @staticmethod
-    def default_dirs():
+    def default_dirs(self):
         out = []
-        for loc in (QStandardPaths.PicturesLocation, QStandardPaths.DesktopLocation,
-                    QStandardPaths.DownloadLocation):
+        for loc in self.locs:
             for d in QStandardPaths.standardLocations(loc):
                 if d and os.path.isdir(d) and d not in out:
                     out.append(d)
@@ -62,10 +64,10 @@ class PhotoLibrary:
                     dns[:] = [d for d in dns if not d.startswith(".") and d.lower() not in SKIP_DIRS]
                     for fn in fns:
                         ext = os.path.splitext(fn)[1].lower()
-                        if ext in IMG_EXT:
+                        if ext in self.exts:
                             path = os.path.join(dp, fn)
                             try:
-                                if ext != ".gif" and os.path.getsize(path) < 25000:
+                                if ext not in self.small_ok and os.path.getsize(path) < self.min_size:
                                     continue        # íconos y miniaturas: no
                             except OSError:
                                 continue

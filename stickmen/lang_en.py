@@ -134,4 +134,14 @@ EN = {
     "¿Se acuerdan?": "Remember this?", "Esta me encanta": "I love this one", "Y ahora…": "And now…",
     "¡Ooh!": "Ooh!", "¡Wow!": "Wow!", "¡Qué bonito!": "So pretty!", "¡Otra!": "Another one!",
     "¿Quién es?": "Who's that?", "¡Jajaja!": "Hahaha!", "¡Oh!": "Oh!", "¡Bravo!": "Bravo!",
+    # DJ
+    "Escenario de DJ": "DJ stage", "Ser el DJ": "Be the DJ", "Concierto de DJ": "DJ concert",
+    "¡Arriba las manos!": "Hands up!", "¡Eso!": "Yeah!", "¡Wuuu!": "Woooo!", "¡Arriba!": "Let's go!",
+    "¡Esa canción!": "That song!", "¡Fiesta!": "Party!", "Música del DJ": "DJ music",
+    "⏸ Pausar música": "⏸ Pause music", "▶ Reproducir música": "▶ Play music", "⏭ Siguiente canción": "⏭ Next song",
+    "⏹ Detener": "⏹ Stop", "Volumen": "Volume", "Buscando música…": "Looking for music…",
+    "{n} canciones encontradas": "{n} songs found", "Música, Descargas y Escritorio": "Music, Downloads and Desktop",
+    "Elige una carpeta con música": "Choose a folder with music", "Volver a buscar": "Search again",
+    "(sin audio en este equipo)": "(no audio on this computer)",
+    "No encontré música (elige una carpeta)": "No music found (choose a folder)",
 }

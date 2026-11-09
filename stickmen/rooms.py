@@ -579,5 +579,5 @@ def find_route(crew, y0, yt, tol):
 
 
 ROOM_ORDER = ["cuarto", "recamara", "comedor", "cocina", "sala", "estudio", "baño", "huerto",
-              "escaleras", "escalera", "techo"]
+              "escenario", "escaleras", "escalera", "techo"]
 BUILD_KEYS = set(ROOM_ORDER)

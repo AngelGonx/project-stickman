@@ -6,7 +6,7 @@ from .stickman import Stickman
 from .objects import ITEM_TYPES
 from .rooms import ITEM_ORDER, INSTRUMENT_ORDER, ROOM_ORDER, BUILD_KEYS
 from .games import GAMES, GAME_ORDER
-from . import projector
+from . import projector, dj
 from . import storage, i18n
 from .i18n import tr
 from .creator import CreatorDialog
@@ -44,6 +44,8 @@ class Crew:
         specs = session if session is not None else storage.default_specs()
         projector.load_photo_settings(storage)
         projector.LIBRARY.rescan()
+        dj.load_music_settings(storage)
+        dj.MUSIC.rescan()
         self.load_build()
         for sp in specs:
             self.spawn(sp, save=False)
@@ -108,6 +110,8 @@ class Crew:
         self.restack()
 
     def on_quit(self):
+        dj.save_music_settings(storage)
+        dj.PLAYER.stop()
         self.save_session()
         storage.save_library(self.library)
 
@@ -224,7 +228,8 @@ class Crew:
         if not cls.available(self):
             return False
         if force:
-            pool = [m for m in self.members if m.grounded() and m.game is None and not m.dragging]
+            pool = [m for m in self.members if m.grounded() and m.game is None and not m.dragging
+                    and not (m.item is not None and m.item.key == "escenario")]
         else:
             pool = [m for m in self.members if m.is_free()]
         if seed is None:
@@ -367,17 +372,40 @@ class Crew:
         self.tray.showMessage("Desk Stickmen", tr("Se importaron {n} personajes a la biblioteca.").format(n=len(lib)))
 
     # ---------------- fotos del proyector ----------------
-    def set_photo_source(self, dirs, whole):
-        projector.LIBRARY.dirs = list(dirs)
-        projector.LIBRARY.whole = whole
-        projector.save_photo_settings(storage)
-        projector.LIBRARY.rescan()
+    def source_menu(self, menu, lib_, kind, scanning_txt, count_txt, default_txt, pick_txt):
+        menu.addAction(scanning_txt if lib_.scanning else count_txt.format(n=len(lib_.files))).setEnabled(False)
+        menu.addSection(tr("¿De dónde salen?"))
+        a = menu.addAction(default_txt)
+        a.setCheckable(True)
+        a.setChecked(not lib_.whole and not lib_.dirs)
+        a.triggered.connect(lambda: self.set_source(kind, [], False))
+        for d in lib_.dirs:
+            a = menu.addAction("✓ " + d)
+            a.setToolTip(tr("Clic para quitar esta carpeta"))
+            a.triggered.connect(lambda _=False, d=d: self.set_source(kind, [x for x in lib_.dirs if x != d], False))
+        a = menu.addAction(tr("Agregar carpeta…"))
+        a.triggered.connect(lambda: self.add_source_dir(kind, pick_txt))
+        a = menu.addAction(tr("Toda la computadora"))
+        a.setCheckable(True)
+        a.setChecked(lib_.whole)
+        a.triggered.connect(lambda: self.set_source(kind, lib_.dirs, not lib_.whole))
+        menu.addSeparator()
+        menu.addAction(tr("Volver a buscar")).triggered.connect(lib_.rescan)
 
-    def add_photo_dir(self):
-        d = QFileDialog.getExistingDirectory(None, tr("Elige una carpeta con fotos"))
+    def set_source(self, kind, dirs, whole):
+        lib_ = dj.MUSIC if kind == "music" else projector.LIBRARY
+        lib_.dirs, lib_.whole = list(dirs), whole
+        if kind == "music":
+            dj.save_music_settings(storage)
+        else:
+            projector.save_photo_settings(storage)
+        lib_.rescan()
+
+    def add_source_dir(self, kind, title):
+        lib_ = dj.MUSIC if kind == "music" else projector.LIBRARY
+        d = QFileDialog.getExistingDirectory(None, title)
         if d:
-            dirs = projector.LIBRARY.dirs + ([d] if d not in projector.LIBRARY.dirs else [])
-            self.set_photo_source(dirs, False)
+            self.set_source(kind, lib_.dirs + ([d] if d not in lib_.dirs else []), False)
 
     # ---------------- bandeja ----------------
     def build_tray(self):
@@ -441,30 +469,14 @@ class Crew:
         m.addAction(tr("Quitar uno")).triggered.connect(lambda: self.remove())
         m.addAction(tr("Reanudar") if self.paused else "Pausar").triggered.connect(self.toggle_pause)
         m.addAction(tr("Mostrar") if not self.visible else "Ocultar").triggered.connect(self.toggle_visible)
+        mus = m.addMenu(tr("Música del DJ"))
+        dj.add_music_controls(mus)
+        mus.addSeparator()
+        self.source_menu(mus, dj.MUSIC, "music", tr("Buscando música…"), tr("{n} canciones encontradas"),
+                         tr("Música, Descargas y Escritorio"), tr("Elige una carpeta con música"))
         ph = m.addMenu(tr("Fotos del proyector"))
-        lib_ = projector.LIBRARY
-        if lib_.scanning:
-            status = tr("Buscando fotos…")
-        else:
-            status = tr("{n} fotos y GIFs encontrados").format(n=len(lib_.files))
-        ph.addAction(status).setEnabled(False)
-        ph.addSection(tr("¿De dónde salen?"))
-        a = ph.addAction(tr("Imágenes, Escritorio y Descargas"))
-        a.setCheckable(True)
-        a.setChecked(not lib_.whole and not lib_.dirs)
-        a.triggered.connect(lambda: self.set_photo_source(dirs=[], whole=False))
-        for d in lib_.dirs:
-            a = ph.addAction("✓ " + d)
-            a.setToolTip(tr("Clic para quitar esta carpeta"))
-            a.triggered.connect(lambda _=False, d=d: self.set_photo_source(
-                dirs=[x for x in lib_.dirs if x != d], whole=False))
-        ph.addAction(tr("Agregar carpeta…")).triggered.connect(self.add_photo_dir)
-        a = ph.addAction(tr("Toda la computadora"))
-        a.setCheckable(True)
-        a.setChecked(lib_.whole)
-        a.triggered.connect(lambda: self.set_photo_source(dirs=lib_.dirs, whole=not lib_.whole))
-        ph.addSeparator()
-        ph.addAction(tr("Volver a buscar fotos")).triggered.connect(lib_.rescan)
+        self.source_menu(ph, projector.LIBRARY, "photo", tr("Buscando fotos…"), tr("{n} fotos y GIFs encontrados"),
+                         tr("Imágenes, Escritorio y Descargas"), tr("Elige una carpeta con fotos"))
 
         lang = m.addMenu("Idioma / Language")
         for code, name in (("es", "Español"), ("en", "English")):
