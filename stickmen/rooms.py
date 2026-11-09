@@ -469,7 +469,7 @@ class Roof(Item):
 
 ITEM_ORDER = ["sofa", "mesa", "picnic", "pelota", "trampolin", "columpio", "resbaladilla", "alberca",
               "fogata", "asador", "tele", "cama", "hamaca", "escritorio", "caballete", "pesas",
-              "barra", "caja", "patineta", "maceta", "arbol", "pizza", "libro"]
+              "barra", "caja", "patineta", "maceta", "arbol", "pizza", "libro", "proyector"]
 INSTRUMENT_ORDER = ["piano", "bateria", "guitarra", "trompeta", "violin", "microfono", "bocina"]
 
 

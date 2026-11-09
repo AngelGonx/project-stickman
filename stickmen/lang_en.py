@@ -122,4 +122,16 @@ EN = {
     "Hora de pintar": "Painting time", "¡A pintar!": "Let's paint!", "¡Ta-da!": "Ta-da!",
     "¡Mira mi dibujo!": "Look at my drawing!", "¿Te gusta?": "Do you like it?", "¡Lo hice yo!": "I made it!",
     "¡Terminé!": "Done!", "Quitar todas las construcciones": "Remove all buildings",
+    # proyector
+    "Proyector y pantalla": "Projector and screen", "Presentación con proyector": "Slideshow presentation",
+    "Siguiente foto": "Next photo", "Fotos del proyector": "Projector photos", "Buscando fotos…": "Looking for photos…",
+    "{n} fotos y GIFs encontrados": "{n} photos and GIFs found", "¿De dónde salen?": "Where from?",
+    "Imágenes, Escritorio y Descargas": "Pictures, Desktop and Downloads", "Clic para quitar esta carpeta": "Click to remove this folder",
+    "Agregar carpeta…": "Add folder…", "Toda la computadora": "The whole computer", "Volver a buscar fotos": "Search photos again",
+    "Elige una carpeta con fotos": "Choose a folder with photos",
+    "¡Bienvenidos a mi presentación!": "Welcome to my presentation!", "Y aquí…": "And here…",
+    "¡Miren esto!": "Look at this!", "Siguiente…": "Next…", "Esta es de mis favoritas": "This is one of my favorites",
+    "¿Se acuerdan?": "Remember this?", "Esta me encanta": "I love this one", "Y ahora…": "And now…",
+    "¡Ooh!": "Ooh!", "¡Wow!": "Wow!", "¡Qué bonito!": "So pretty!", "¡Otra!": "Another one!",
+    "¿Quién es?": "Who's that?", "¡Jajaja!": "Hahaha!", "¡Oh!": "Oh!", "¡Bravo!": "Bravo!",
 }

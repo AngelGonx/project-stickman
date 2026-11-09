@@ -6,6 +6,7 @@ from .stickman import Stickman
 from .objects import ITEM_TYPES
 from .rooms import ITEM_ORDER, INSTRUMENT_ORDER, ROOM_ORDER, BUILD_KEYS
 from .games import GAMES, GAME_ORDER
+from . import projector
 from . import storage, i18n
 from .i18n import tr
 from .creator import CreatorDialog
@@ -41,6 +42,8 @@ class Crew:
     def start(self):
         session = storage.load_session()
         specs = session if session is not None else storage.default_specs()
+        projector.load_photo_settings(storage)
+        projector.LIBRARY.rescan()
         self.load_build()
         for sp in specs:
             self.spawn(sp, save=False)
@@ -363,6 +366,19 @@ class Crew:
         storage.save_library(self.library)
         self.tray.showMessage("Desk Stickmen", tr("Se importaron {n} personajes a la biblioteca.").format(n=len(lib)))
 
+    # ---------------- fotos del proyector ----------------
+    def set_photo_source(self, dirs, whole):
+        projector.LIBRARY.dirs = list(dirs)
+        projector.LIBRARY.whole = whole
+        projector.save_photo_settings(storage)
+        projector.LIBRARY.rescan()
+
+    def add_photo_dir(self):
+        d = QFileDialog.getExistingDirectory(None, tr("Elige una carpeta con fotos"))
+        if d:
+            dirs = projector.LIBRARY.dirs + ([d] if d not in projector.LIBRARY.dirs else [])
+            self.set_photo_source(dirs, False)
+
     # ---------------- bandeja ----------------
     def build_tray(self):
         self.tray = QSystemTrayIcon(self.make_icon())
@@ -425,6 +441,31 @@ class Crew:
         m.addAction(tr("Quitar uno")).triggered.connect(lambda: self.remove())
         m.addAction(tr("Reanudar") if self.paused else "Pausar").triggered.connect(self.toggle_pause)
         m.addAction(tr("Mostrar") if not self.visible else "Ocultar").triggered.connect(self.toggle_visible)
+        ph = m.addMenu(tr("Fotos del proyector"))
+        lib_ = projector.LIBRARY
+        if lib_.scanning:
+            status = tr("Buscando fotos…")
+        else:
+            status = tr("{n} fotos y GIFs encontrados").format(n=len(lib_.files))
+        ph.addAction(status).setEnabled(False)
+        ph.addSection(tr("¿De dónde salen?"))
+        a = ph.addAction(tr("Imágenes, Escritorio y Descargas"))
+        a.setCheckable(True)
+        a.setChecked(not lib_.whole and not lib_.dirs)
+        a.triggered.connect(lambda: self.set_photo_source(dirs=[], whole=False))
+        for d in lib_.dirs:
+            a = ph.addAction("✓ " + d)
+            a.setToolTip(tr("Clic para quitar esta carpeta"))
+            a.triggered.connect(lambda _=False, d=d: self.set_photo_source(
+                dirs=[x for x in lib_.dirs if x != d], whole=False))
+        ph.addAction(tr("Agregar carpeta…")).triggered.connect(self.add_photo_dir)
+        a = ph.addAction(tr("Toda la computadora"))
+        a.setCheckable(True)
+        a.setChecked(lib_.whole)
+        a.triggered.connect(lambda: self.set_photo_source(dirs=lib_.dirs, whole=not lib_.whole))
+        ph.addSeparator()
+        ph.addAction(tr("Volver a buscar fotos")).triggered.connect(lib_.rescan)
+
         lang = m.addMenu("Idioma / Language")
         for code, name in (("es", "Español"), ("en", "English")):
             a = lang.addAction(("✓ " if i18n.LANG == code else "   ") + name)

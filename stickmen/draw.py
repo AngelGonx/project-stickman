@@ -457,6 +457,13 @@ def draw_prop2(p, prop, j, H, f, t, u, ha, d, ang):
     p.save()
     if prop in ("hoop", "rope"):
         draw_around(p, prop, j, H, f, t, back=False)
+    elif prop == "pointer":
+        tip = ha + d * (H * 0.5)
+        _pen(p, "#1F2937", H * 0.015)
+        p.drawLine(ha, tip)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor("#EF4444"))
+        p.drawEllipse(tip, H * 0.02, H * 0.02)
     elif prop == "juggle":
         mid = (j["haF"] + j["haB"]) * 0.5
         p.setPen(Qt.NoPen)
