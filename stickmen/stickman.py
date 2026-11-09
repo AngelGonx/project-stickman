@@ -147,7 +147,7 @@ class Stickman(QWidget):
         if nx < L + m or nx > Rb - m or ground_at(nx) is None:
             return False
         self.hx = nx
-        self.phase = (self.phase + dt * speed / (self.H * 1.05)) % 1.0
+        self.phase = (self.phase + dt * speed / stride(speed, self.H)) % 1.0
         return True
 
     def walk_to(self, x, dt, speed=None):
@@ -724,7 +724,12 @@ class Stickman(QWidget):
         # suavizado de pose
         if self.state != "act":
             self.pose["rot"] = wrap_deg(self.pose["rot"])
-        speed = self.act.snap if (self.state == "act" and self.act) else 22
+        if self.state == "act" and self.act:
+            speed = self.act.snap
+        elif self.moving or self.state in ("walk", "run", "sprint", "goto", "approach"):
+            speed = 45      # caminar/correr: respuesta rápida para que no se vea flojo
+        else:
+            speed = 22
         k = 1 - math.exp(-dt * speed)
         self.pose = lerp_pose(self.pose, self.target_pose(), k)
         self.joints = solve(self.pose, self.H, self.facing, self.R)

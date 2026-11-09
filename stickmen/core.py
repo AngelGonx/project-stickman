@@ -14,8 +14,8 @@ from PySide6.QtWidgets import QApplication, QWidget, QMenu, QSystemTrayIcon
 # ----------------------------------------------------------------------------
 HEIGHT = 90            # altura del stickman en píxeles
 GRAVITY = 2400.0       # px/s²
-WALK_SPEED = 70.0      # px/s
-RUN_SPEED = 190.0      # px/s
+WALK_SPEED = 85.0      # px/s
+RUN_SPEED = 210.0      # px/s
 SPRINT_SPEED = 420.0   # px/s ("correr de la nada")
 FPS = 60
 
@@ -151,22 +151,54 @@ def pose_stand(t):
              uaB=-6 + 2 * b, faB=-2 + 2 * b, uaF=8 - 2 * b, faF=14 - 2 * b)
 
 
-def pose_walk(phase, amp=1.0, lean=5):
-    t = 2 * math.pi * phase
+# Ciclos de pierna (fase 0..1 -> ángulo de muslo, ángulo de espinilla).
+# Caminar: contacto, amortiguación, paso, impulso, recogida, alcance.
+WALK_LEG = [(0.00, (24, 16)), (0.12, (15, -14)), (0.30, (2, -3)), (0.46, (-20, -16)),
+            (0.56, (-22, -40)), (0.70, (-4, -66)), (0.85, (22, -34)), (1.00, (24, 16))]
+# Correr: rodillas altas, patada atrás y fase de vuelo.
+RUN_LEG = [(0.00, (30, 14)), (0.12, (12, -26)), (0.30, (-26, -22)), (0.42, (-40, -60)),
+           (0.58, (-14, -118)), (0.75, (48, -62)), (0.88, (58, -4)), (1.00, (30, 14))]
 
-    def leg(a):
-        th = 26 * amp * math.sin(a)
-        sh = th - (6 + 40 * amp * max(0.0, math.cos(a)))
+
+def _cycle(table, ph):
+    ph %= 1.0
+    for (u0, (a0, b0)), (u1, (a1, b1)) in zip(table, table[1:]):
+        if ph <= u1:
+            k = smooth((ph - u0) / (u1 - u0))
+            return a0 + (a1 - a0) * k, b0 + (b1 - b0) * k
+    return table[-1][1]
+
+
+def pose_walk(phase, amp=1.0, lean=5):
+    """Caminar/correr. amp<1 = pasitos cortos, 1 = caminar, >=1.45 = correr."""
+    g = clamp((amp - 1.0) / 0.45, 0.0, 1.0)          # 0 caminar ... 1 correr
+    sw = min(amp, 1.0) if g == 0 else 1.0
+    sr = max(1.0, amp / 1.45)
+
+    def leg(ph):
+        wt, ws = _cycle(WALK_LEG, ph)
+        rt, rs = _cycle(RUN_LEG, ph)
+        th = wt * sw * (1 - g) + rt * sr * g
+        sh = ws * sw * (1 - g) + rs * sr * g
         return th, sh
 
-    thF, shF = leg(t)
-    thB, shB = leg(t + math.pi)
-    arm = 24 * amp
-    bend = 20 + 80 * (amp - 1)
-    uaF = -arm * math.sin(t)
-    uaB = arm * math.sin(t)
-    return P(lean=lean, tilt=0, thB=thB, shB=shB, thF=thF, shF=shF,
-             uaB=uaB, faB=uaB + bend, uaF=uaF, faF=uaF + bend)
+    thF, shF = leg(phase)
+    thB, shB = leg(phase + 0.5)
+    c = math.cos(2 * math.pi * (phase - 0.04))       # brazos opuestos a las piernas
+    arm = (26 * sw) * (1 - g) + (52 * sr) * g
+    uaF, uaB = -arm * c, arm * c
+    bendF = (18 + 14 * (1 - c) / 2) * (1 - g) + 95 * g
+    bendB = (18 + 14 * (1 + c) / 2) * (1 - g) + 95 * g
+    bob = math.cos(4 * math.pi * phase)
+    lift = 0.07 * g * max(0.0, math.sin(4 * math.pi * (phase - 0.33))) * sr
+    return P(lean=lean + 2.5 * bob * (1 - g * 0.5), tilt=-lean * 0.45 - 2 * bob,
+             thB=thB, shB=shB, thF=thF, shF=shF,
+             uaB=uaB, faB=uaB + bendB, uaF=uaF, faF=uaF + bendF, lift=lift)
+
+
+def stride(speed, H):
+    """Largo de un ciclo completo (dos pasos) según la velocidad."""
+    return H * (0.7 + abs(speed) / 450.0)
 
 
 def pose_wave(t):
