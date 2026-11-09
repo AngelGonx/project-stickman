@@ -201,6 +201,8 @@ class Crew:
     def step(self, dt):
         self.time += dt
         self.has_rooms = any(it.is_room for it in self.items)
+        if dj.PLAYER.playing and not any(it.key == "escenario" for it in self.items):
+            dj.PLAYER.stop()        # se quitó el escenario: se apaga la música
         for m in list(self.members):
             m.update_logic(dt)
         for it in sorted(self.items, key=lambda i: -i.y):     # de abajo hacia arriba
@@ -470,7 +472,7 @@ class Crew:
         m.addAction(tr("Reanudar") if self.paused else "Pausar").triggered.connect(self.toggle_pause)
         m.addAction(tr("Mostrar") if not self.visible else "Ocultar").triggered.connect(self.toggle_visible)
         mus = m.addMenu(tr("Música del DJ"))
-        dj.add_music_controls(mus)
+        dj.add_music_controls(mus, any(it.key == "escenario" for it in self.items))
         mus.addSeparator()
         self.source_menu(mus, dj.MUSIC, "music", tr("Buscando música…"), tr("{n} canciones encontradas"),
                          tr("Música, Descargas y Escritorio"), tr("Elige una carpeta con música"))

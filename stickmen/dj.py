@@ -412,7 +412,10 @@ GAME_ORDER.append("concierto")
 
 
 # ============================================================================
-def add_music_controls(menu):
+def add_music_controls(menu, has_stage=True):
+    if not has_stage:
+        menu.addAction(tr("Pon un escenario de DJ para reproducir")).setEnabled(False)
+        return
     if PLAYER.playing:
         menu.addAction(tr("⏸ Pausar música")).triggered.connect(PLAYER.pause)
     else:

@@ -144,4 +144,5 @@ EN = {
     "Elige una carpeta con música": "Choose a folder with music", "Volver a buscar": "Search again",
     "(sin audio en este equipo)": "(no audio on this computer)",
     "No encontré música (elige una carpeta)": "No music found (choose a folder)",
+    "Pon un escenario de DJ para reproducir": "Place a DJ stage to play music",
 }
