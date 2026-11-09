@@ -3,9 +3,11 @@ from .core import *  # noqa: F401,F403
 from .actions import ACTIONS, SOLO, SOCIAL
 from .draw import draw_stickman
 from .stickman import Stickman
-from .objects import ITEM_TYPES, ITEM_ORDER
+from .objects import ITEM_TYPES
+from .rooms import ITEM_ORDER, INSTRUMENT_ORDER, ROOM_ORDER
 from .games import GAMES, GAME_ORDER
-from . import storage
+from . import storage, i18n
+from .i18n import tr
 from .creator import CreatorDialog
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 
@@ -19,6 +21,7 @@ class Crew:
         self.items = []
         self.games = []
         self.visible = True
+        self.has_rooms = False
         self.paused = False
         self.time = 0.0
         self.game_cd = random.uniform(25, 45)
@@ -84,8 +87,19 @@ class Crew:
         self.items.append(it)
         it.sync()
         it.show()
-        for m in self.members:       # los stickmen quedan enfrente de los objetos
+        self.restack()
+
+
+    def restack(self):
+        """Orden de ventanas: cuartos, techos, objetos, stickmen y capas de juego encima."""
+        for it in sorted(self.items, key=lambda i: i.layer):
+            if it.layer < 3:
+                it.raise_()
+        for m in self.members:
             m.raise_()
+        for it in self.items:
+            if it.layer >= 3:
+                it.raise_()
         for g in self.games:
             if g.ov is not None:
                 g.ov.raise_()
@@ -116,6 +130,7 @@ class Crew:
 
     def step(self, dt):
         self.time += dt
+        self.has_rooms = any(it.is_room for it in self.items)
         for m in list(self.members):
             m.update_logic(dt)
         for it in list(self.items):
@@ -248,8 +263,8 @@ class Crew:
         if i < 0:
             return
         name = self.library[i]["name"]
-        r = QMessageBox.question(None, "Borrar personaje",
-                                 f"¿Borrar a «{name}» de la biblioteca?\n(Si está en pantalla, se queda ahí.)")
+        r = QMessageBox.question(None, tr("Borrar personaje"),
+                                 tr("¿Borrar a «{name}» de la biblioteca?\n(Si está en pantalla, se queda ahí.)").format(name=name))
         if r == QMessageBox.Yes:
             self.library.pop(i)
             storage.save_library(self.library)
@@ -261,20 +276,20 @@ class Crew:
         self.spawn(spec)
 
     def export_backup(self):
-        path, _ = QFileDialog.getSaveFileName(None, "Exportar respaldo", "respaldo_stickmen.json",
-                                              "Respaldo (*.json)")
+        path, _ = QFileDialog.getSaveFileName(None, tr("Exportar respaldo"), "respaldo_stickmen.json",
+                                              tr("Respaldo (*.json)"))
         if path:
             storage.export_backup(path, self.library, [m.spec for m in self.members])
-            self.tray.showMessage("Desk Stickmen", "Respaldo guardado.")
+            self.tray.showMessage("Desk Stickmen", tr("Respaldo guardado."))
 
     def import_backup(self):
-        path, _ = QFileDialog.getOpenFileName(None, "Importar respaldo", "", "Respaldo (*.json)")
+        path, _ = QFileDialog.getOpenFileName(None, tr("Importar respaldo"), "", tr("Respaldo (*.json)"))
         if not path:
             return
         try:
             lib, _ses = storage.import_backup(path)
         except Exception:
-            QMessageBox.warning(None, "Importar respaldo", "Ese archivo no es un respaldo válido.")
+            QMessageBox.warning(None, tr("Importar respaldo"), tr("Ese archivo no es un respaldo válido."))
             return
         for sp in lib:
             i = self.lib_index(sp["id"])
@@ -283,7 +298,7 @@ class Crew:
             else:
                 self.library.append(sp)
         storage.save_library(self.library)
-        self.tray.showMessage("Desk Stickmen", f"Se importaron {len(lib)} personajes a la biblioteca.")
+        self.tray.showMessage("Desk Stickmen", tr("Se importaron {n} personajes a la biblioteca.").format(n=len(lib)))
 
     # ---------------- bandeja ----------------
     def build_tray(self):
@@ -298,48 +313,59 @@ class Crew:
     def fill_tray_menu(self):
         m = self.menu
         m.clear()
-        add = m.addMenu("Agregar stickman")
-        add.addSection("Originales")
+        add = m.addMenu(tr("Agregar stickman"))
+        add.addSection(tr("Originales"))
         for sp in storage.default_specs():
             add.addAction(sp["name"]).triggered.connect(lambda _=False, sp=sp: self.spawn(sp))
         if self.library:
-            add.addSection("De la biblioteca")
+            add.addSection(tr("De la biblioteca"))
             for sp in self.library:
                 add.addAction(sp["name"]).triggered.connect(lambda _=False, sp=sp: self.spawn(sp))
-        m.addAction("Crear stickman personalizado…").triggered.connect(self.create_custom)
+        m.addAction(tr("Crear stickman personalizado…")).triggered.connect(self.create_custom)
 
-        lib = m.addMenu("Biblioteca de personajes")
+        lib = m.addMenu(tr("Biblioteca de personajes"))
         if not self.library:
-            lib.addAction("(vacía: clic derecho a un stickman → Guardar)").setEnabled(False)
+            lib.addAction(tr("(vacía: clic derecho a un stickman → Guardar)")).setEnabled(False)
         for sp in self.library:
             sub = lib.addMenu(sp["name"])
-            sub.addAction("Poner en pantalla").triggered.connect(lambda _=False, sp=sp: self.spawn(sp))
-            sub.addAction("Editar…").triggered.connect(lambda _=False, i=sp["id"]: self.edit_library(i))
-            sub.addAction("Borrar").triggered.connect(lambda _=False, i=sp["id"]: self.delete_library(i))
+            sub.addAction(tr("Poner en pantalla")).triggered.connect(lambda _=False, sp=sp: self.spawn(sp))
+            sub.addAction(tr("Editar…")).triggered.connect(lambda _=False, i=sp["id"]: self.edit_library(i))
+            sub.addAction(tr("Borrar")).triggered.connect(lambda _=False, i=sp["id"]: self.delete_library(i))
         lib.addSeparator()
-        lib.addAction("Guardar a todos los de la pantalla").triggered.connect(
+        lib.addAction(tr("Guardar a todos los de la pantalla")).triggered.connect(
             lambda: [self.save_to_library(s) for s in self.members])
-        lib.addAction("Exportar respaldo…").triggered.connect(self.export_backup)
-        lib.addAction("Importar respaldo…").triggered.connect(self.import_backup)
+        lib.addAction(tr("Exportar respaldo…")).triggered.connect(self.export_backup)
+        lib.addAction(tr("Importar respaldo…")).triggered.connect(self.import_backup)
 
-        obj = m.addMenu("Objetos")
+        obj = m.addMenu(tr("Objetos"))
         for k in ITEM_ORDER:
-            obj.addAction(ITEM_TYPES[k].label).triggered.connect(lambda _=False, k=k: self.add_item(k))
-        obj.addSeparator()
-        obj.addAction("Quitar todos los objetos").triggered.connect(self.clear_items)
+            obj.addAction(tr(ITEM_TYPES[k].label)).triggered.connect(lambda _=False, k=k: self.add_item(k))
+        ins = m.addMenu(tr("Instrumentos"))
+        for k in INSTRUMENT_ORDER:
+            ins.addAction(tr(ITEM_TYPES[k].label)).triggered.connect(lambda _=False, k=k: self.add_item(k))
+        rooms = m.addMenu(tr("Cuartos y techos"))
+        for k in ROOM_ORDER:
+            if k == "techo":
+                rooms.addSeparator()
+            rooms.addAction(tr(ITEM_TYPES[k].label)).triggered.connect(lambda _=False, k=k: self.add_item(k))
+        m.addAction(tr("Quitar todos los objetos")).triggered.connect(self.clear_items)
 
-        gm = m.addMenu("Juegos")
+        gm = m.addMenu(tr("Juegos"))
         for k in GAME_ORDER:
-            a = gm.addAction(GAMES[k].label)
+            a = gm.addAction(tr(GAMES[k].label))
             a.setEnabled(GAMES[k].available(self) and len(self.members) >= GAMES[k].min_p)
             a.triggered.connect(lambda _=False, k=k: self.start_game(k, force=True))
 
         m.addSeparator()
-        m.addAction("Quitar uno").triggered.connect(lambda: self.remove())
-        m.addAction("Reanudar" if self.paused else "Pausar").triggered.connect(self.toggle_pause)
-        m.addAction("Mostrar" if not self.visible else "Ocultar").triggered.connect(self.toggle_visible)
+        m.addAction(tr("Quitar uno")).triggered.connect(lambda: self.remove())
+        m.addAction(tr("Reanudar") if self.paused else "Pausar").triggered.connect(self.toggle_pause)
+        m.addAction(tr("Mostrar") if not self.visible else "Ocultar").triggered.connect(self.toggle_visible)
+        lang = m.addMenu("Idioma / Language")
+        for code, name in (("es", "Español"), ("en", "English")):
+            a = lang.addAction(("✓ " if i18n.LANG == code else "   ") + name)
+            a.triggered.connect(lambda _=False, c=code: i18n.set_lang(c))
         m.addSeparator()
-        m.addAction("Salir").triggered.connect(self.app.quit)
+        m.addAction(tr("Salir")).triggered.connect(self.app.quit)
 
     def toggle_pause(self):
         self.paused = not self.paused
@@ -370,32 +396,32 @@ class Crew:
                   ("Saltar", s.jump),
                   ("Perseguir el cursor", s.notice_cursor)]
         for name, fn in basics:
-            a = menu.addAction(name)
+            a = menu.addAction(tr(name))
             a.setEnabled(free)
             a.triggered.connect(order(fn))
 
-        sub = menu.addMenu("Acciones")
+        sub = menu.addMenu(tr("Acciones"))
         sub.setEnabled(free)
-        for key in sorted(set(SOLO) | {"saludar"}, key=lambda k: ACTIONS[k].label):
-            sub.addAction(ACTIONS[key].label).triggered.connect(
+        for key in sorted(set(SOLO) | {"saludar"}, key=lambda k: tr(ACTIONS[k].label)):
+            sub.addAction(tr(ACTIONS[key].label)).triggered.connect(
                 order(lambda _=False, k=key: s.start_action(k)))
 
         usable = [it for it in self.items if it.usable() and it.free_slots() and not it.hidden]
-        um = menu.addMenu("Usar objeto")
+        um = menu.addMenu(tr("Usar objeto"))
         um.setEnabled(free and bool(usable))
         for it in usable:
-            um.addAction(it.label).triggered.connect(order(lambda _=False, it=it: s.go_use(it)))
+            um.addAction(tr(it.label)).triggered.connect(order(lambda _=False, it=it: s.go_use(it)))
 
-        gm = menu.addMenu("Jugar")
+        gm = menu.addMenu(tr("Jugar"))
         gm.setEnabled(free)
         for k in GAME_ORDER:
-            a = gm.addAction(GAMES[k].label)
+            a = gm.addAction(tr(GAMES[k].label))
             a.setEnabled(GAMES[k].available(self) and len(self.members) >= GAMES[k].min_p)
             a.triggered.connect(lambda _=False, k=k: self.start_game(k, seed=s, force=True))
 
         others = [m for m in self.members if m is not s and m.grounded() and m.opponent is None]
         if others and free:
-            withm = menu.addMenu("Con otro…")
+            withm = menu.addMenu(tr("Con otro…"))
             for o in others:
                 om = withm.addMenu(o.spec["name"])
 
@@ -405,16 +431,16 @@ class Crew:
                         o.leave_all()
                         fn()
                     return run
-                om.addAction("Pelear").triggered.connect(both(lambda o=o: s.start_fight(o)))
-                om.addAction("Jugar a las traes").triggered.connect(both(lambda o=o: s.start_tag(o)))
+                om.addAction(tr("Pelear")).triggered.connect(both(lambda o=o: s.start_fight(o)))
+                om.addAction(tr("Jugar a las traes")).triggered.connect(both(lambda o=o: s.start_tag(o)))
                 for k in SOCIAL:
-                    om.addAction(ACTIONS[k].label).triggered.connect(
+                    om.addAction(tr(ACTIONS[k].label)).triggered.connect(
                         both(lambda o=o, k=k: s.start_social(o, k)))
         menu.addSeparator()
-        menu.addAction("Guardar en la biblioteca").triggered.connect(lambda: self.save_to_library(s))
-        menu.addAction("Editar apariencia…").triggered.connect(lambda: self.edit_stickman(s))
-        menu.addAction("Duplicar").triggered.connect(lambda: self.duplicate(s))
-        menu.addAction("Quitar de la pantalla").triggered.connect(lambda: self.remove(s))
+        menu.addAction(tr("Guardar en la biblioteca")).triggered.connect(lambda: self.save_to_library(s))
+        menu.addAction(tr("Editar apariencia…")).triggered.connect(lambda: self.edit_stickman(s))
+        menu.addAction(tr("Duplicar")).triggered.connect(lambda: self.duplicate(s))
+        menu.addAction(tr("Quitar de la pantalla")).triggered.connect(lambda: self.remove(s))
         menu.exec(pos)
 
     @staticmethod
@@ -434,6 +460,7 @@ class Crew:
 def main():
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
+    i18n.load_lang()
     crew = Crew(app)
     crew.start()
     sys.exit(app.exec())

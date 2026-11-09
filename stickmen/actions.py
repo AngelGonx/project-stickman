@@ -786,3 +786,244 @@ def _(u, t, s):
 
 
 SOLO += ["celular", "celular", "caminar_celular", "selfie"]
+
+
+# ======================== MÁS ACCIONES SOLOS ================================
+@action("yoga", "Hacer yoga", 6.0, say=[(0.3, 0.6, "ommm")])
+def _(u, t, s):
+    tree = S(thF=60, shF=-115, uaF=175, faF=180, uaB=-175, faB=-180, lean=0, tilt=-4)
+    warrior = P(lean=0, tilt=-6, thB=-40, shB=-40, thF=55, shF=-5, uaF=90, faF=90, uaB=-90, faB=-90,
+                lift=-0.0)
+    return kf(u, [(0, S()), (0.12, tree), (0.45, tree), (0.55, warrior), (0.88, warrior), (1, S())])
+
+
+@action("malabares", "Hacer malabares", 5.0, prop="juggle")
+def _(u, t, s):
+    k = math.sin(t * 9)
+    return held(u, S(uaF=40, faF=110 + 18 * k, uaB=35, faB=105 - 18 * k, tilt=-18), 0.1)
+
+
+@action("avion", "Lanzar un avión de papel", 2.4, prop="plane",
+        say=[(0.6, 0.9, "¡Vuela!")])
+def _(u, t, s):
+    back = S(uaF=150, faF=200, lean=-8, thF=20, thB=-15)
+    throw = S(uaF=105, faF=95, lean=12, thF=28, thB=-22)
+    return kf(u, [(0, S()), (0.3, back), (0.45, throw), (0.85, throw), (1, S())])
+
+
+@action("helado", "Comer un helado", 5.0, prop="icecream", say=[(0.5, 0.6, "mmm")])
+def _(u, t, s):
+    lick = (math.sin(t * 2.2) + 1) / 2
+    return held(u, S(uaF=40 + 50 * lick, faF=130 + 60 * lick, tilt=6 - 10 * lick), 0.1)
+
+
+@action("cafe", "Tomar café", 5.0, prop="mug", say=[(0.55, 0.65, "ahh")])
+def _(u, t, s):
+    sip = max(0.0, math.sin(t * 1.3)) ** 2
+    return held(u, S(uaF=30 + 60 * sip, faF=120 + 75 * sip, tilt=4 - 22 * sip, lean=1), 0.1)
+
+
+@action("cuerda_sola", "Saltar la cuerda", 4.5, prop="rope")
+def _(u, t, s):
+    ph = (t * 1.6) % 1.0
+    lift = 0.22 * max(0.0, math.sin(ph * 2 * math.pi)) if 0.08 < u < 0.92 else 0.0
+    p = S(uaF=35, faF=60, uaB=-35, faB=-60, thB=-4 + 30 * lift, shB=-4 - 40 * lift,
+          thF=4 + 30 * lift, shF=4 - 40 * lift)
+    return W(p, lift=lift)
+
+
+@action("burbujas", "Hacer burbujas", 5.0, prop="wand")
+def _(u, t, s):
+    k = math.sin(t * 3)
+    return held(u, S(uaF=60 + 25 * k, faF=150 + 20 * k, tilt=-6, lean=2), 0.1)
+
+
+@action("hula", "Hula hula", 5.0, prop="hoop", say=[(0.15, 0.85, "♪")])
+def _(u, t, s):
+    k = math.sin(t * 9)
+    return held(u, S(lean=6 * k, uaF=165, faF=175, uaB=-165, faB=-175, thF=8 + 6 * k, thB=-8 + 6 * k), 0.1)
+
+
+@action("yoyo", "Jugar yoyo", 4.5, prop="yoyo")
+def _(u, t, s):
+    k = math.sin(t * 5)
+    return held(u, S(uaF=50 + 10 * k, faF=95 + 15 * k, tilt=14), 0.1)
+
+
+@action("libreta", "Escribir en su libreta", 5.0, prop="notebook", say=[(0.7, 0.8, "...")])
+def _(u, t, s):
+    k = math.sin(t * 14)
+    return held(u, S(uaB=30, faB=110, uaF=40, faF=120 + 6 * k, tilt=24), 0.1)
+
+
+@action("ballet", "Ballet", 4.0, events=[(0.55, FLIP), (0.62, FLIP), (0.69, FLIP), (0.76, FLIP)])
+def _(u, t, s):
+    arab = P(lean=35, tilt=-20, thB=-4, shB=-4, thF=-100, shF=-100, uaF=110, faF=120, uaB=-100, faB=-110)
+    plie = S(thB=-35, shB=25, thF=35, shF=-25, uaF=100, faF=150, uaB=-100, faB=-150, lean=0)
+    spin = S(thF=40, shF=-30, uaF=170, faF=190, uaB=-170, faB=-190, lift=0.04)
+    return kf(u, [(0, S()), (0.15, plie), (0.3, arab), (0.48, arab), (0.55, spin), (0.8, spin), (1, S())])
+
+
+@action("saludo_militar", "Saludo militar", 2.4)
+def _(u, t, s):
+    sal = P(lean=-2, tilt=-4, thB=-2, shB=-2, thF=2, shF=2, uaF=118, faF=205, uaB=-4, faB=-2)
+    return kf(u, [(0, S()), (0.25, sal), (0.8, sal), (1, S())])
+
+
+@action("silbar", "Silbar caminando", 5.0, speed=40, say=[(0.1, 0.9, "♪ ~")])
+def _(u, t, s):
+    return W(pose_walk(s.phase, amp=0.75, lean=-2), uaF=-40, faF=-110, uaB=-35, faB=-105, tilt=-10)
+
+
+@action("camara", "Tomar fotos", 3.6, prop="camera", say=[(0.4, 0.5, "clic"), (0.75, 0.85, "clic")])
+def _(u, t, s):
+    shot = S(uaF=60, faF=150, uaB=55, faB=145, tilt=-2, lean=4)
+    return kf(u, [(0, S()), (0.2, shot), (0.6, W(shot, thF=25, shF=-20, lean=10)), (0.9, shot), (1, S())])
+
+
+@action("agua", "Tomar agua", 3.0, prop="bottle")
+def _(u, t, s):
+    drink = S(uaF=110, faF=200, tilt=-30, lean=-4)
+    return kf(u, [(0, S()), (0.3, drink), (0.75, drink), (1, S())])
+
+
+@action("salto_estrella", "Salto de estrella", 1.4)
+def _(u, t, s):
+    p = kf(u, [(0, S()), (0.2, CROUCH), (0.4, STAR), (0.7, STAR), (0.85, CROUCH), (1, S())])
+    p["lift"] = arc(u, 0.25, 0.85, 0.7)
+    return p
+
+
+SOLO += ["yoga", "malabares", "avion", "helado", "cafe", "cuerda_sola", "burbujas", "hula",
+         "yoyo", "libreta", "ballet", "saludo_militar", "silbar", "camara", "agua", "salto_estrella"]
+
+
+# ======================== INSTRUMENTOS Y OBJETOS NUEVOS =====================
+STOOL = W(SEATED, lean=4, tilt=6)
+
+
+@action("o_piano", "Tocar el piano", (7.0, 12.0), kind="item", say=[(0.1, 0.9, "♪♫")])
+def _(u, t, s):
+    a, b = math.sin(t * 11), math.sin(t * 13 + 1)
+    return W(STOOL, uaF=55, faF=85 + 10 * a, uaB=50, faB=80 + 10 * b, tilt=4 + 4 * math.sin(t * 2))
+
+
+@action("o_bateria", "Tocar la batería", (6.0, 10.0), kind="item", prop="sticks",
+        say=[(0.1, 0.9, "♪♪")])
+def _(u, t, s):
+    a, b = math.sin(t * 14), math.sin(t * 14 + math.pi)
+    return W(STOOL, uaF=45 + 15 * a, faF=110 + 30 * a, uaB=40 + 15 * b, faB=105 + 30 * b,
+             tilt=8 * math.sin(t * 7), thF=92 + 8 * max(0, a))
+
+
+@action("o_trompeta", "Tocar la trompeta", (5.0, 9.0), kind="item", prop="trumpet",
+        say=[(0.1, 0.9, "♪")])
+def _(u, t, s):
+    return held(u, S(uaF=70, faF=150, uaB=60, faB=140, lean=-8 + 3 * math.sin(t * 3), tilt=-12), 0.1)
+
+
+@action("o_violin", "Tocar el violín", (6.0, 10.0), kind="item", prop="violin",
+        say=[(0.1, 0.9, "♪~")])
+def _(u, t, s):
+    k = math.sin(t * 5)
+    return held(u, S(uaB=100, faB=170, uaF=50 + 25 * k, faF=95 + 20 * k, tilt=14, lean=-2), 0.1)
+
+
+@action("o_cantar", "Cantar", (6.0, 10.0), kind="item",
+        say=[(0.1, 0.35, "♪ la la ♪"), (0.45, 0.7, "♪ ooh ♪"), (0.78, 0.95, "♪♪")])
+def _(u, t, s):
+    k = math.sin(t * 3)
+    return S(uaF=55, faF=140, uaB=-30 + 60 * max(0, k), faB=40 + 100 * max(0, k), lean=4 * k, tilt=-8)
+
+
+@action("o_cartas", "Jugar cartas", (8.0, 14.0), kind="item", prop="cards",
+        say=[(0.6, 0.7, "¡Gané!")])
+def _(u, t, s):
+    k = (math.sin(t * 1.5) + 1) / 2
+    return W(SEATED, uaF=50 + 30 * k, faF=110, uaB=45, faB=110, tilt=12)
+
+
+@action("o_columpio", "Columpiarse", (6.0, 10.0), kind="item", say=[(0.4, 0.5, "¡Wiii!")])
+def _(u, t, s):
+    sw = s.item.swing if s.item is not None and hasattr(s.item, "swing") else 0.0
+    k = sw / 0.6
+    return P(lean=-10 - 15 * k, tilt=-5, thB=80 + 15 * k, shB=10 + 50 * k, thF=85 + 15 * k, shF=15 + 50 * k,
+             uaF=160, faF=175, uaB=160, faB=175)
+
+
+@action("o_resbaladilla", "Resbalarse", 4.0, kind="item", say=[(0.55, 0.8, "¡Wiii!")])
+def _(u, t, s):
+    if u < 0.4:      # subir la escalera
+        k = math.sin(t * 9)
+        return P(lean=8, thB=50 + 20 * k, shB=-20, thF=50 - 20 * k, shF=-20,
+                 uaF=160 - 20 * k, faF=175, uaB=160 + 20 * k, faB=175)
+    if u < 0.88:     # sentado bajando
+        return W(SEATED, lean=-25, uaF=150, faF=170, uaB=140, faB=165, thF=80, shF=70, thB=82, shB=72)
+    return CROUCH
+
+
+@action("o_alberca", "Chapotear en la alberca", (7.0, 12.0), kind="item", say=[(0.3, 0.45, "¡Splash!")])
+def _(u, t, s):
+    k = math.sin(t * 6)
+    return W(CROSS_LEG, uaF=90 + 50 * k, faF=110 + 40 * k, uaB=90 - 50 * k, faB=110 - 40 * k, tilt=-8)
+
+
+@action("o_pintar", "Pintar", (7.0, 12.0), kind="item", prop="brush", say=[(0.8, 0.95, "¡Listo!")])
+def _(u, t, s):
+    k = math.sin(t * 4)
+    return held(u, S(uaF=95 + 20 * k, faF=110 + 25 * k, uaB=10, faB=80, tilt=-4, lean=3), 0.1)
+
+
+@action("o_compu", "Usar la compu", (8.0, 15.0), kind="item", say=[(0.5, 0.6, "jaja")])
+def _(u, t, s):
+    a, b = math.sin(t * 15), math.sin(t * 17)
+    return W(SEATED, uaF=55, faF=88 + 6 * a, uaB=50, faB=85 + 6 * b, tilt=2, lean=4)
+
+
+@action("o_hamaca", "Descansar en la hamaca", (10.0, 18.0), kind="item", say=[(0.25, 0.9, "Zzz")])
+def _(u, t, s):
+    return W(LIE, uaF=160, faF=200, uaB=170, faB=205, thF=6, shF=10, tilt=30)
+
+
+@action("o_asar", "Asar en el asador", (6.0, 10.0), kind="item", prop="spatula",
+        say=[(0.5, 0.6, "¡Ya casi!")])
+def _(u, t, s):
+    k = math.sin(t * 5)
+    return held(u, S(uaF=70 + 10 * k, faF=60 + 25 * k, uaB=20, faB=60, tilt=14, lean=6), 0.1)
+
+
+@action("o_arbol", "Descansar bajo el árbol", (8.0, 15.0), kind="item")
+def _(u, t, s):
+    return P(lean=-22, tilt=8, thB=80, shB=70, thF=88, shF=80, uaB=-30, faB=-10, uaF=150, faF=230)
+
+
+@action("o_cocinar", "Cocinar", (6.0, 10.0), kind="item", prop="pan", say=[(0.6, 0.7, "¡Ñam!")])
+def _(u, t, s):
+    k = max(0.0, math.sin(t * 3))
+    return held(u, S(uaF=70, faF=75 + 30 * k, uaB=20, faB=50, tilt=12), 0.1)
+
+
+@action("o_refri", "Buscar en el refri", 3.5, kind="item", prop="bottle", say=[(0.3, 0.5, "mmm…")])
+def _(u, t, s):
+    look = S(uaF=90, faF=95, lean=20, tilt=12)
+    drink = S(uaF=110, faF=200, tilt=-30, lean=-4)
+    return kf(u, [(0, S()), (0.15, look), (0.5, look), (0.65, drink), (0.9, drink), (1, S())])
+
+
+@action("o_lavar", "Lavar los trastes", (5.0, 8.0), kind="item", say=[(0.5, 0.6, "~")])
+def _(u, t, s):
+    k = math.sin(t * 8)
+    return held(u, S(uaF=75 + 8 * k, faF=85 + 10 * k, uaB=70 - 8 * k, faB=80 - 10 * k, lean=10, tilt=14), 0.1)
+
+
+@action("o_cosechar", "Cosechar", 3.0, kind="item", prop="carrot", say=[(0.6, 0.9, "¡Una zanahoria!")])
+def _(u, t, s):
+    pick = W(CROUCH, uaF=60, faF=20, lean=35)
+    show = S(uaF=150, faF=170, tilt=-8)
+    return kf(u, [(0, S()), (0.25, pick), (0.5, pick), (0.65, show), (0.95, show), (1, S())])
+
+
+@action("o_baño", "Darse un baño", (8.0, 14.0), kind="item", say=[(0.4, 0.6, "♪ ~")])
+def _(u, t, s):
+    k = math.sin(t * 2)
+    return W(LIE, rot=-60, uaF=150 + 20 * k, faF=200, uaB=40, faB=60, thF=40, shF=60, thB=30, shB=50, tilt=20)

@@ -2,7 +2,7 @@
 from .core import *  # noqa: F401,F403
 from .actions import (ACTIONS, SOLO, SOCIAL, FIGHT_CLOSE, FIGHT_FAR, pose_stand, pose_walk,
                       pose_wave, pose_watch, pose_sit, pose_guard, pose_flail, pose_dangle,
-                      CROUCH, TUCK, REACH, FALL, lerp_pose)
+                      CROUCH, TUCK, REACH, FALL, lerp_pose, P)
 from .draw import draw_stickman, draw_impact, draw_bubble, draw_speed_lines, bubble_top
 from .objects import Ball
 
@@ -94,6 +94,9 @@ class Stickman(QWidget):
         self.blend_t = 0.0
         self.game = None
         self.prop_override = None
+        self.item_action = None
+        self.climb_from = self.climb_to = 0.0
+        self.climb_dur = 1.0
 
         # arrastre
         self.dragging = False
@@ -179,7 +182,7 @@ class Stickman(QWidget):
         u = min(1.0, self.act_el / self.act_dur)
         sp = a.speed_at(u) * self.act_speed_mul
         if self.item is not None and self.slot is not None and not self.slot.ride:
-            self.hx = self.item.x + self.slot.dx * self.H     # sigue pegado al objeto
+            self.hx = self.item.slot_pos(self.slot, self)[0]     # sigue pegado al objeto
         elif sp:
             if not self.step(sp, dt) and a.kind == "item":
                 self.facing *= -1
@@ -312,7 +315,7 @@ class Stickman(QWidget):
             self.decide()
             return
         self.goto_t -= dt
-        tx = it.x + sl.dx * self.H
+        tx = it.slot_pos(sl, self)[0]
         far = abs(tx - self.hx) > 5 * self.H
         arrived = self.walk_to(tx, dt, RUN_SPEED if far else WALK_SPEED * 1.3)
         if abs(tx - self.hx) < 4 or arrived or self.goto_t <= 0:
@@ -322,17 +325,62 @@ class Stickman(QWidget):
                 return
             self.hx = tx
             self.facing = sl.face if sl.face else random.choice((-1, 1))
-            if sl.hide:
-                it.hidden = True
-            self.blend_t = 0.35
+            self.item_action = random.choice(it.actions_for(sl))
             self.raise_()
-            self.start_action(random.choice(sl.actions), then=self.done_item)
+            for it2 in self.crew.items:
+                if it2.layer >= 3:
+                    it2.raise_()
+            target = self.slot_hip_target(0.0, 0.47 * self.H)
+            g = ground_at(self.hx) or self.last_ground
+            if not sl.no_climb and target < g - 0.85 * self.H:
+                self.climb_from, self.climb_to = self.hy, target    # ¡a subirse!
+                self.set_state("climb", 0.55 + min(0.6, (g - target) / self.H * 0.12))
+                self.climb_dur = self.timer
+            else:
+                self.begin_item_action()
+
+    def begin_item_action(self):
+        it, sl = self.item, self.slot
+        if it is None:
+            self.decide()
+            return
+        if sl.hide:
+            it.hidden = True
+        self.blend_t = 0.35
+        self.start_action(self.item_action, then=self.done_item)
+
+    def slot_hip_target(self, lift, cy):
+        """Altura de la cadera (y en pantalla) en el lugar del objeto."""
+        it, sl = self.item, self.slot
+        _, by = it.slot_pos(sl, self)
+        if sl.seat is not None:
+            return by - sl.seat * self.H - lift
+        return by - sl.floor * self.H - cy - lift
+
+    def update_climb(self, dt):
+        if self.item is None or self.item.dragging:
+            self.leave_item()
+            self.vx = self.vy = 0.0
+            self.set_state("air")
+            return
+        k = smooth(1 - self.timer / max(self.climb_dur, 1e-3))
+        hop = math.sin(k * math.pi) * 0.35 * self.H
+        self.hy = self.climb_from + (self.climb_to - self.climb_from) * k - hop
+        if self.timer <= 0:
+            self.hy = self.climb_to
+            self.begin_item_action()
 
     def done_item(self):
         it, sl = self.item, self.slot
         if it is not None:
             it.on_used(self, sl)
         self.leave_item()
+        g = ground_at(self.hx) or self.last_ground
+        if self.hy < g - contact(self.joints, self.H, self.R) - 0.3 * self.H and self.game is None:
+            self.vx, self.vy = self.facing * 90, -250     # brinca para bajarse
+            self.thrown = False
+            self.set_state("air")
+            return
         self.resume()
 
     def leave_item(self):
@@ -350,7 +398,7 @@ class Stickman(QWidget):
 
     def kick_from_item(self):
         """El usuario movió el objeto: se cae de él."""
-        was_using = self.state == "act" and self.item is not None
+        was_using = self.state in ("act", "climb") and self.item is not None
         self.leave_item()
         if was_using:
             self.vx, self.vy, self.thrown = 0.0, 0.0, False
@@ -631,6 +679,10 @@ class Stickman(QWidget):
             return pose_guard(t, sh)
         if s == "drag":
             return pose_dangle(t, clamp(-self.svx * self.facing * 0.04, -45, 45))
+        if s == "climb":
+            k = math.sin(t * 12)
+            return P(lean=10, thB=60 + 25 * k, shB=-30, thF=60 - 25 * k, shF=-30,
+                     uaF=165 - 15 * k, faF=175, uaB=165 + 15 * k, faB=175)
         if s == "air":
             if self.thrown:
                 return pose_flail(t)
@@ -672,6 +724,8 @@ class Stickman(QWidget):
 
         if s == "drag":
             self.update_drag(dt)
+        elif s == "climb":
+            self.update_climb(dt)
         elif s == "air":
             self.update_air(dt, L, Rb, top, m)
         else:
@@ -746,11 +800,8 @@ class Stickman(QWidget):
                 self.vx, self.vy = self.facing * 40, 0.0
                 self.set_state("air")
                 return
-            sl = self.slot if (self.item is not None and self.state == "act") else None
-            if sl is not None and sl.seat is not None:
-                target = g - sl.seat * self.H - lift
-            elif sl is not None:
-                target = g - sl.floor * self.H - cy - lift
+            if self.item is not None and self.slot is not None and self.state == "act":
+                target = self.slot_hip_target(lift, cy)
             else:
                 target = g - cy - lift
             if self.blend_t > 0:
@@ -883,7 +934,7 @@ class Stickman(QWidget):
         if self.state == "sprint" or (self.state == "act" and self.act and self.act.lines):
             draw_speed_lines(p, self.H, self.facing, self.spec["color"], self.t)
         draw_stickman(p, j, self.H, self.spec, self.facing, self.t,
-                      self.blink_t > 0, self.look, self.prop, self.R)
+                      self.blink_t > 0, self.look, self.prop, self.R, max(0.0, self.act_u))
         if self.fx_t > 0:
             draw_impact(p, self.fx_pt, self.H, self.fx_t / 0.25, self.fx_scale)
         text = self.bubble_text()

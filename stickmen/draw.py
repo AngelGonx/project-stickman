@@ -1,5 +1,7 @@
 """Dibujo de stickmen, cosméticos, objetos en la mano y globos de texto."""
 from .core import *  # noqa: F401,F403
+from PySide6.QtGui import QPainterPath
+from .i18n import tr
 
 # Cosméticos disponibles en el creador: (clave, nombre)
 COSMETICS = [
@@ -19,7 +21,7 @@ def head_angle(a, b):
     return math.degrees(math.atan2(d.x(), -d.y()))
 
 
-def draw_stickman(p, j, H, spec, f, t, blink=False, look=0.0, prop=None, R=None):
+def draw_stickman(p, j, H, spec, f, t, blink=False, look=0.0, prop=None, R=None, u=0.0):
     col = QColor(spec["color"])
     back = col.lighter(160) if col.lightness() < 90 else col.darker(125)
     acc = QColor(spec.get("accent", "#FFFFFF"))
@@ -57,6 +59,8 @@ def draw_stickman(p, j, H, spec, f, t, blink=False, look=0.0, prop=None, R=None)
         p.restore()
 
     # ---- extremidades de atrás
+    if prop in ("hoop", "rope"):
+        draw_around(p, prop, j, H, f, t, back=True)
     if prop == "guitar":
         draw_guitar(p, j, H, f)
     seg(back, j["sh"], j["elB"], j["haB"])
@@ -112,8 +116,10 @@ def draw_stickman(p, j, H, spec, f, t, blink=False, look=0.0, prop=None, R=None)
         p.restore()
 
     # ---- brazo de enfrente y lo que trae en la mano
-    if prop and prop != "guitar":
-        draw_prop(p, prop, j, H, f, t)
+    if prop in BEHIND_PROPS:
+        draw_prop(p, prop, j, H, f, t, u)
+    elif prop and prop != "guitar":
+        draw_prop(p, prop, j, H, f, t, u)
     seg(col, j["sh"], j["elF"], j["haF"])
     if prop == "dumbbells":
         draw_dumbbell(p, j["haF"], H)
@@ -253,7 +259,10 @@ def _forearm(j, side="F"):
     return ha, QPointF(d.x() / L, d.y() / L)
 
 
-def draw_prop(p, prop, j, H, f, t):
+BEHIND_PROPS = ()
+
+
+def draw_prop(p, prop, j, H, f, t, u=0.0):
     ha, d = _forearm(j)
     ang = math.degrees(math.atan2(d.y(), d.x()))
     p.save()
@@ -318,6 +327,10 @@ def draw_prop(p, prop, j, H, f, t):
             p.drawEllipse(sp + QPointF(f * H * 0.05 * k, H * 0.35 * k), H * 0.012, H * 0.018)
     elif prop == "dumbbells":
         draw_dumbbell(p, j["haB"], H)
+    else:
+        p.restore()
+        draw_prop2(p, prop, j, H, f, t, u, ha, d, ang)
+        return
     p.restore()
 
 
@@ -364,10 +377,11 @@ def draw_impact(p, c, H, k, scale=1.0):
     p.drawPolygon(QPolygonF(pts))
 
 
-RED_WORDS = ("!", "¡Ven!", "grr", "¡Strike!", "¡Ring! ¡Ring!")
+RED_WORDS = ("!", "¡Ven!", "grr", "¡Strike!", "¡Ring! ¡Ring!", "Come on!", "Strike!", "Ring! Ring!")
 
 
 def draw_bubble(p, c, H, text):
+    text = tr(text)
     f = QFont()
     f.setBold(True)
     f.setPixelSize(max(9, int(H * 0.15)))
@@ -404,3 +418,200 @@ def bubble_top(j, H, spec, R=None):
     top = min(min(pt.y() for pt in j.values()), j["head"].y() - R)
     extra = max([TALL_ACCS.get(a, 0) for a in spec.get("accs", [])] + [0])
     return top - extra * R - H * 0.24
+
+
+def _pen(p, c, w):
+    p.setPen(QPen(QColor(c), w, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+
+
+def draw_around(p, prop, j, H, f, t, back):
+    """Aro de hula hula / cuerda: mitad de atrás (back=True) o de enfrente."""
+    if prop == "hoop":
+        c = j["hip"] + QPointF(f * H * 0.02 * math.sin(t * 9), -H * 0.05)
+        p.save()
+        p.translate(c)
+        p.rotate(8 * math.sin(t * 9))
+        _pen(p, "#EC4899", H * 0.025)
+        p.setBrush(Qt.NoBrush)
+        r = QRectF(-H * 0.28, -H * 0.06, H * 0.56, H * 0.12)
+        p.drawArc(r, 0, 180 * 16) if back else p.drawArc(r, 180 * 16, 180 * 16)
+        p.restore()
+    elif prop == "rope":
+        a, b = j["haB"], j["haF"]
+        ph = (t * 1.6) % 1.0
+        mid_y = -math.cos(ph * 2 * math.pi)      # 1 = abajo de los pies, -1 = arriba de la cabeza
+        front = 0.25 < ph < 0.75
+        if front == back:
+            return
+        y = (a.y() + b.y()) / 2
+        top, bot = j["head"].y() - H * 0.3, max(j["ftB"].y(), j["ftF"].y()) + H * 0.04
+        my = top + (bot - top) * (mid_y + 1) / 2
+        path = QPainterPath(a)
+        path.quadTo(QPointF((a.x() + b.x()) / 2, 2 * my - y), b)
+        _pen(p, "#B91C1C", H * 0.018)
+        p.setBrush(Qt.NoBrush)
+        p.drawPath(path)
+
+
+def draw_prop2(p, prop, j, H, f, t, u, ha, d, ang):
+    p.save()
+    if prop in ("hoop", "rope"):
+        draw_around(p, prop, j, H, f, t, back=False)
+    elif prop == "juggle":
+        mid = (j["haF"] + j["haB"]) * 0.5
+        p.setPen(Qt.NoPen)
+        for i, c in enumerate(("#EF4444", "#3B82F6", "#FACC15")):
+            k = (t * 1.5 + i / 3) % 1.0
+            x = math.cos(k * 2 * math.pi) * H * 0.14
+            y = -abs(math.sin(k * 2 * math.pi)) * H * 0.4
+            p.setBrush(QColor(c))
+            p.drawEllipse(mid + QPointF(x, y - H * 0.04), H * 0.035, H * 0.035)
+    elif prop == "plane":
+        if u < 0.45:
+            pos, a2 = ha, ang
+        else:
+            k = (u - 0.45) / 0.55
+            pos = ha + QPointF(f * H * 1.0 * k, -H * 0.35 * math.sin(k * math.pi) - H * 0.1 * k)
+            a2 = 0 if f > 0 else 180
+        p.translate(pos)
+        p.rotate(a2)
+        _pen(p, "#94A3B8", 1)
+        p.setBrush(QColor("#FFFFFF"))
+        p.drawPolygon(QPolygonF([QPointF(H * 0.1, 0), QPointF(-H * 0.06, -H * 0.04), QPointF(-H * 0.03, 0),
+                                 QPointF(-H * 0.06, H * 0.04)]))
+    elif prop == "icecream":
+        p.translate(ha)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor("#D97706"))
+        p.drawPolygon(QPolygonF([QPointF(-H * 0.035, -H * 0.03), QPointF(H * 0.035, -H * 0.03), QPointF(0, H * 0.06)]))
+        p.setBrush(QColor("#F9A8D4"))
+        p.drawEllipse(QPointF(0, -H * 0.06), H * 0.045, H * 0.04)
+    elif prop == "mug":
+        p.translate(ha)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor("#F8FAFC"))
+        p.drawRoundedRect(QRectF(-H * 0.035, -H * 0.05, H * 0.07, H * 0.075), 3, 3)
+        _pen(p, "#F8FAFC", H * 0.012)
+        p.drawArc(QRectF(f * H * 0.02, -H * 0.035, H * 0.04, H * 0.04), -90 * 16, 180 * 16 * f)
+        _pen(p, QColor(200, 200, 200, 160), H * 0.008)
+        for i in range(2):
+            k = (t + i * 0.5) % 1.0
+            p.drawLine(QPointF(-H * 0.01 + i * H * 0.02, -H * (0.07 + 0.08 * k)),
+                       QPointF(i * H * 0.02 + H * 0.01 * math.sin(t * 6), -H * (0.1 + 0.08 * k)))
+    elif prop == "wand":
+        tip = ha + d * (H * 0.18)
+        _pen(p, "#A855F7", H * 0.012)
+        p.drawLine(ha, tip)
+        p.setBrush(Qt.NoBrush)
+        p.drawEllipse(tip, H * 0.03, H * 0.03)
+        for i in range(5):
+            k = (t * 0.4 + i / 5) % 1.0
+            c = QColor.fromHsvF((i * 0.17 + t * 0.05) % 1.0, 0.35, 1.0)
+            c.setAlphaF(0.8 * (1 - k))
+            _pen(p, c, max(1.0, H * 0.008))
+            p.drawEllipse(tip + QPointF(f * H * (0.1 + 0.5 * k) + H * 0.05 * math.sin(t * 2 + i),
+                                        -H * 0.6 * k), H * (0.025 + 0.02 * (i % 3)), H * (0.025 + 0.02 * (i % 3)))
+    elif prop == "yoyo":
+        y = H * (0.05 + 0.3 * (0.5 + 0.5 * math.sin(t * 5)))
+        _pen(p, "#64748B", 1)
+        p.drawLine(ha, ha + QPointF(0, y))
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor("#EF4444"))
+        p.drawEllipse(ha + QPointF(0, y), H * 0.035, H * 0.035)
+    elif prop == "notebook":
+        c = (j["haF"] + j["haB"]) * 0.5
+        p.translate(c)
+        p.setPen(QPen(QColor("#1D4ED8"), 1))
+        p.setBrush(QColor("#FEF9C3"))
+        p.drawRect(QRectF(-H * 0.06, -H * 0.05, H * 0.12, H * 0.09))
+        _pen(p, "#F59E0B", H * 0.012)
+        p.drawLine(QPointF(f * H * 0.02, -H * 0.02), QPointF(f * H * 0.06 + H * 0.01 * math.sin(t * 14), -H * 0.09))
+    elif prop == "camera":
+        c = (j["haF"] + j["haB"]) * 0.5
+        p.translate(c)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor("#1F2937"))
+        p.drawRoundedRect(QRectF(-H * 0.06, -H * 0.04, H * 0.12, H * 0.08), 3, 3)
+        p.setBrush(QColor("#93C5FD"))
+        p.drawEllipse(QPointF(f * H * 0.02, 0), H * 0.025, H * 0.025)
+        if 0.4 < u < 0.45 or 0.75 < u < 0.8:
+            p.setBrush(QColor(255, 255, 220, 200))
+            p.drawEllipse(QPointF(f * H * 0.1, 0), H * 0.08, H * 0.08)
+    elif prop == "bottle":
+        p.translate(ha)
+        p.rotate(ang + 90)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(96, 165, 250, 210))
+        p.drawRoundedRect(QRectF(-H * 0.025, -H * 0.1, H * 0.05, H * 0.12), 3, 3)
+        p.setBrush(QColor("#1D4ED8"))
+        p.drawRect(QRectF(-H * 0.012, -H * 0.13, H * 0.024, H * 0.03))
+    elif prop == "sticks":
+        for side in ("F", "B"):
+            h2, d2 = _forearm(j, side)
+            _pen(p, "#D6A35C", H * 0.014)
+            p.drawLine(h2, h2 + d2 * (H * 0.22))
+    elif prop == "trumpet":
+        mouth = j["head"] + QPointF(f * H * 0.12, H * 0.03)
+        bell = mouth + QPointF(f * H * 0.32, H * 0.05)
+        _pen(p, "#EAB308", H * 0.022)
+        p.drawLine(mouth, bell)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor("#EAB308"))
+        p.drawPolygon(QPolygonF([bell + QPointF(0, -H * 0.02), bell + QPointF(f * H * 0.08, -H * 0.06),
+                                 bell + QPointF(f * H * 0.08, H * 0.06), bell + QPointF(0, H * 0.02)]))
+    elif prop == "violin":
+        chin = j["neck"] + QPointF(f * H * 0.05, -H * 0.02)
+        p.save()
+        p.translate(chin)
+        p.rotate(-25 * f)
+        p.setPen(QPen(QColor("#5B2C0A"), 1))
+        p.setBrush(QColor("#B45309"))
+        p.drawEllipse(QPointF(f * H * 0.1, 0), H * 0.1, H * 0.05)
+        _pen(p, "#3B1F0A", H * 0.014)
+        p.drawLine(QPointF(f * H * 0.18, 0), QPointF(f * H * 0.36, 0))
+        p.restore()
+        _pen(p, "#E5E7EB", H * 0.008)
+        p.drawLine(ha + d * (-H * 0.05), ha + QPointF(-f * H * 0.05, -H * 0.28))
+    elif prop == "cards":
+        c = (j["haF"] + j["haB"]) * 0.5
+        p.translate(c)
+        p.setPen(QPen(QColor("#334155"), 1))
+        for i in range(3):
+            p.save()
+            p.rotate(-20 + i * 20)
+            p.setBrush(QColor("#FFFFFF"))
+            p.drawRect(QRectF(-H * 0.02, -H * 0.07, H * 0.04, H * 0.06))
+            p.restore()
+    elif prop == "brush":
+        tip = ha + d * (H * 0.16)
+        _pen(p, "#92400E", H * 0.012)
+        p.drawLine(ha, tip)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor.fromHsvF((t * 0.2) % 1.0, 0.8, 0.9))
+        p.drawEllipse(tip, H * 0.018, H * 0.018)
+    elif prop == "spatula":
+        tip = ha + d * (H * 0.2)
+        _pen(p, "#6B7280", H * 0.012)
+        p.drawLine(ha, tip)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor("#9CA3AF"))
+        p.drawRect(QRectF(tip.x() - H * 0.03, tip.y() - H * 0.015, H * 0.06, H * 0.03))
+    elif prop == "pan":
+        tip = ha + QPointF(f * H * 0.16, H * 0.0)
+        _pen(p, "#1F2937", H * 0.016)
+        p.drawLine(ha, tip)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor("#111827"))
+        p.drawEllipse(tip + QPointF(f * H * 0.08, 0), H * 0.09, H * 0.025)
+        p.setBrush(QColor("#FDE68A"))
+        hop = abs(math.sin(t * 3)) * H * 0.12
+        p.drawEllipse(tip + QPointF(f * H * 0.08, -H * 0.03 - hop), H * 0.035, H * 0.018)
+    elif prop == "carrot":
+        p.translate(ha)
+        p.rotate(ang)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor("#F97316"))
+        p.drawPolygon(QPolygonF([QPointF(0, -H * 0.025), QPointF(0, H * 0.025), QPointF(H * 0.12, 0)]))
+        p.setBrush(QColor("#22C55E"))
+        p.drawEllipse(QPointF(-H * 0.02, 0), H * 0.025, H * 0.015)
+    p.restore()

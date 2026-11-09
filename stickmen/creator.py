@@ -3,6 +3,7 @@ from .core import *  # noqa: F401,F403
 from .actions import pose_wave, pose_walk, pose_stand
 from .draw import draw_stickman, COSMETICS, bubble_top, draw_bubble
 from .storage import new_id, normalize
+from .i18n import tr
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QConicalGradient, QRadialGradient
 from PySide6.QtWidgets import (QDialog, QLineEdit, QRadioButton, QButtonGroup, QListWidget,
@@ -118,7 +119,7 @@ class Preview(QWidget):
 class CreatorDialog(QDialog):
     def __init__(self, spec=None, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Crear stickman" if spec is None else "Editar stickman")
+        self.setWindowTitle(tr("Crear stickman") if spec is None else tr("Editar stickman"))
         self.setWindowFlag(Qt.WindowStaysOnTopHint, True)
         base = normalize(spec) if spec else dict(id=new_id(), name="", color="#F97316",
                                                  accent="#FFFFFF", eyes="#111111", accs=[],
@@ -127,11 +128,11 @@ class CreatorDialog(QDialog):
         self.editing = "color"
 
         self.name = QLineEdit(self.data["name"])
-        self.name.setPlaceholderText("Ponle un nombre")
+        self.name.setPlaceholderText(tr("Ponle un nombre"))
         self.name.setMaxLength(24)
 
-        self.body_normal = QRadioButton("Normal")
-        self.body_big = QRadioButton("Cabeza grande hueca")
+        self.body_normal = QRadioButton(tr("Normal"))
+        self.body_big = QRadioButton(tr("Cabeza grande hueca"))
         (self.body_big if self.data["body"] == "cabezon" else self.body_normal).setChecked(True)
         bg = QButtonGroup(self)
         bg.addButton(self.body_normal)
@@ -143,7 +144,7 @@ class CreatorDialog(QDialog):
         mg = QButtonGroup(self)
         mode_row = QHBoxLayout()
         for key, label in (("color", "Cuerpo"), ("accent", "Accesorios"), ("eyes", "Ojos")):
-            b = QRadioButton(label)
+            b = QRadioButton(tr(label))
             mg.addButton(b)
             mode_row.addWidget(b)
             b.toggled.connect(lambda on, k=key: on and self.set_mode(k))
@@ -160,27 +161,27 @@ class CreatorDialog(QDialog):
 
         self.cos = QListWidget()
         for key, label in COSMETICS:
-            it = QListWidgetItem(label)
+            it = QListWidgetItem(tr(label))
             it.setData(Qt.UserRole, key)
             it.setFlags(it.flags() | Qt.ItemIsUserCheckable)
             it.setCheckState(Qt.Checked if key in self.data["accs"] else Qt.Unchecked)
             self.cos.addItem(it)
         self.cos.itemChanged.connect(self.on_cos)
 
-        rnd = QPushButton("🎲 Aleatorio")
+        rnd = QPushButton(tr("🎲 Aleatorio"))
         rnd.clicked.connect(self.randomize)
-        ok = QPushButton("Guardar")
+        ok = QPushButton(tr("Guardar"))
         ok.setDefault(True)
         ok.clicked.connect(self.accept)
-        cancel = QPushButton("Cancelar")
+        cancel = QPushButton(tr("Cancelar"))
         cancel.clicked.connect(self.reject)
 
         self.preview = Preview(self)
 
         left = QVBoxLayout()
-        left.addWidget(QLabel("Nombre:"))
+        left.addWidget(QLabel(tr("Nombre:")))
         left.addWidget(self.name)
-        body = QGroupBox("Tipo de stickman")
+        body = QGroupBox(tr("Tipo de stickman"))
         bl = QVBoxLayout(body)
         bl.addWidget(self.body_normal)
         bl.addWidget(self.body_big)
@@ -188,19 +189,19 @@ class CreatorDialog(QDialog):
         left.addWidget(self.preview, 1)
 
         mid = QVBoxLayout()
-        colors = QGroupBox("Colores")
+        colors = QGroupBox(tr("Colores"))
         cl = QVBoxLayout(colors)
         cl.addLayout(mode_row)
         cl.addWidget(self.wheel, 1)
         row = QHBoxLayout()
-        row.addWidget(QLabel("Brillo"))
+        row.addWidget(QLabel(tr("Brillo")))
         row.addWidget(self.bright, 1)
         row.addWidget(self.hex)
         cl.addLayout(row)
         mid.addWidget(colors)
 
         right = QVBoxLayout()
-        cg = QGroupBox("Cosméticos (puedes elegir varios)")
+        cg = QGroupBox(tr("Cosméticos (puedes elegir varios)"))
         cgl = QVBoxLayout(cg)
         cgl.addWidget(self.cos)
         right.addWidget(cg, 1)
@@ -266,7 +267,7 @@ class CreatorDialog(QDialog):
 
     def spec(self):
         d = dict(self.data)
-        d["name"] = self.name.text().strip() or "Sin nombre"
+        d["name"] = self.name.text().strip() or tr("Sin nombre")
         return d
 
     @staticmethod

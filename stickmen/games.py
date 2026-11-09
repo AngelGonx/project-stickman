@@ -648,9 +648,13 @@ class Baseball(Game):
             return
         if s is self.chaser and self.mode in ("hit", "fetch"):
             tx = b.p.x() if b.rest or self.mode == "fetch" else b.landing_x(self.ground)
+            x0, x1 = self.bounds()
+            tx = clamp(tx, x0 + 0.5 * self.H, x1 - 0.5 * self.H)
             s.walk_to(tx, dt, RUN_SPEED * 1.1)
             hand = QPointF(s.hx, s.hy) + s.joints["haF"]
-            if math.hypot(b.p.x() - hand.x(), b.p.y() - hand.y()) < 0.45 * self.H:
+            near_hand = math.hypot(b.p.x() - hand.x(), b.p.y() - hand.y()) < 0.45 * self.H
+            on_floor = b.p.y() > self.ground - 0.35 * self.H and abs(b.p.x() - s.hx) < 0.45 * self.H
+            if near_hand or on_floor:
                 in_air = b.p.y() < self.ground - 0.4 * self.H and not b.rest
                 b.held, b.rest = s, False
                 if in_air and self.mode == "hit":
@@ -703,12 +707,27 @@ class Baseball(Game):
             return W(REACH, lift=0)
         return P(lean=30, thB=40, shB=-30, thF=50, shF=-20, uaB=40, faB=10, uaF=45, faF=15)
 
+    def new_ball(self):
+        self.ball = GBall(self.pitcher.hx, self.pitcher.hy)
+        self.ball.held = self.pitcher
+        self.chaser = None
+        self.mode, self.wait = "ready", random.uniform(1.0, 2.0)
+
     def update(self, dt):
         b = self.ball
         if b is None:
             return
         x0, x1 = self.bounds()
         b.tick(dt, self.ground, x0, x1)
+        # seguro anti-congelados: si una jugada se atora, pelota nueva al lanzador
+        if self.mode != getattr(self, "_last_mode", None):
+            self._last_mode, self.mode_t = self.mode, 0.0
+        self.mode_t = getattr(self, "mode_t", 0.0) + dt
+        if self.mode != "ready" and self.mode_t > 9.0:
+            self.new_ball()
+            return
+        if self.mode == "carry" and b.held is not None and b.held.state == "game":
+            self.run(b.held, "g_tirar")     # la iba a lanzar pero se interrumpió
         if self.t > self.dur and self.mode == "ready":
             self.end(winners=self.players)
             return
@@ -731,9 +750,7 @@ class Baseball(Game):
         elif self.mode == "dead":
             b.fade -= dt * 0.8
             if b.fade <= 0 or b.rest:
-                self.ball = GBall(self.pitcher.hx, self.pitcher.hy)
-                self.ball.held = self.pitcher
-                self.mode, self.wait = "ready", random.uniform(1.0, 2.0)
+                self.new_ball()
         elif self.mode == "hit":
             if b.rest or (b.v.y() == 0 and b.p.y() >= self.ground - 0.1 * self.H):
                 self.mode = "fetch"

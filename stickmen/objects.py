@@ -3,16 +3,19 @@
 No se guardan: al cerrar el programa desaparecen.
 """
 from .core import *  # noqa: F401,F403
+from .i18n import tr
 from PySide6.QtGui import QRadialGradient, QPainterPath
 
 
 class Slot:
     """Un lugar para usar el objeto. Medidas en H (altura del stickman)."""
 
-    def __init__(self, dx, face, actions, seat=None, floor=0.0, hide=False, ride=False):
+    def __init__(self, dx, face, actions, seat=None, floor=0.0, hide=False, ride=False,
+                 no_climb=False):
         self.dx, self.face = dx, face
         self.actions = actions if isinstance(actions, (list, tuple)) else [actions]
         self.seat, self.floor, self.hide, self.ride = seat, floor, hide, ride
+        self.no_climb = no_climb
         self.user = None
 
 
@@ -28,6 +31,9 @@ class Item(QWidget):
     key, label = "item", "Objeto"
     W, HH = 1.0, 1.0          # ancho y alto en H
     throwable = False
+    is_room = False
+    is_roof = False
+    layer = 2                 # orden de apilado: 0 cuartos, 1 techos, 2 objetos
 
     def __init__(self, crew, x, y):
         flags = (Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool |
@@ -69,6 +75,36 @@ class Item(QWidget):
     def bounds(self):
         return QRectF(-self.W / 2 * self.H, -self.HH * self.H, self.W * self.H, self.HH * self.H)
 
+    def slot_pos(self, slot, s):
+        """Dónde se pone el stickman: (x, y de la base) en pantalla."""
+        return self.x + slot.dx * self.H, self.y
+
+    def actions_for(self, slot):
+        return slot.actions
+
+    def on_land(self, room):
+        pass
+
+    def support(self, y_now):
+        """La superficie más alta debajo de y_now: el piso o un cuarto (su piso o su techo)."""
+        best = ground_at(self.x)
+        if best is None:
+            best = desktop_bounds()[2] + 5000
+        self.support_room = None
+        for r in self.crew.items:
+            if r is self or not r.is_room or not r.on_ground or r.dragging:
+                continue
+            half = r.W * self.H / 2
+            if abs(self.x - r.x) > half - 0.15 * self.H:
+                continue
+            surfaces = [r.y - r.HH * self.H]
+            if not self.is_room and not self.is_roof:
+                surfaces.append(r.y - r.FLOOR * self.H)
+            for sy in surfaces:
+                if y_now - 2 <= sy < best:
+                    best, self.support_room = sy, r
+        return best
+
     # ---- lógica
     def free_slots(self):
         return [s for s in self.slots if s.user is None]
@@ -90,6 +126,9 @@ class Item(QWidget):
             self.x, self.y = nx, ny
         elif not self.on_ground:
             self.physics(dt)
+        elif self.crew.has_rooms and self.support(self.y) > self.y + 2:
+            self.on_ground = False      # le quitaron lo que tenía abajo
+            self.release_users()
         self.extra_tick(dt)
 
     def physics(self, dt):
@@ -102,11 +141,12 @@ class Item(QWidget):
             self.x, self.vx = L + m, abs(self.vx) * 0.5
         elif self.x > Rb - m:
             self.x, self.vx = Rb - m, -abs(self.vx) * 0.5
-        g = ground_at(self.x) or (top + 500)
+        g = self.support(self.y - self.vy * dt)
         if self.y >= g:
             self.y = g
             self.vx = self.vy = 0.0
             self.on_ground = True
+            self.on_land(self.support_room)
 
     def sync(self):
         self.setVisible(not self.hidden and self.crew.visible)
@@ -139,12 +179,13 @@ class Item(QWidget):
                 self.vx, self.vy = clamp(self.svx, -1600, 1600), clamp(self.svy, -1600, 1600)
             else:
                 self.vx = self.vy = 0.0
+            self.crew.restack()
 
     def contextMenuEvent(self, e):
         menu = QMenu()
-        menu.addAction(f"— {self.label} —").setEnabled(False)
+        menu.addAction(f"— {tr(self.label)} —").setEnabled(False)
         self.extra_menu(menu)
-        menu.addAction("Quitar").triggered.connect(lambda: self.crew.remove_item(self))
+        menu.addAction(tr("Quitar")).triggered.connect(lambda: self.crew.remove_item(self))
         menu.exec(e.globalPos())
 
     def extra_menu(self, menu):
@@ -422,7 +463,7 @@ class Plant(Item):
         self.growth = min(5, self.growth + 1)
 
     def extra_menu(self, menu):
-        menu.addAction("Podar (volver a chiquita)").triggered.connect(lambda: setattr(self, "growth", 0))
+        menu.addAction(tr("Podar (volver a chiquita)")).triggered.connect(lambda: setattr(self, "growth", 0))
 
     def draw(self, p):
         H, t = self.H, self.t
@@ -474,7 +515,7 @@ class Pizza(Item):
         self.slices = max(0, self.slices - 1)
 
     def extra_menu(self, menu):
-        menu.addAction("Pedir otra pizza").triggered.connect(lambda: setattr(self, "slices", 8))
+        menu.addAction(tr("Pedir otra pizza")).triggered.connect(lambda: setattr(self, "slices", 8))
 
     def draw(self, p):
         H = self.H
@@ -612,7 +653,7 @@ class Ball(Item):
             self.x, self.vx = Rb - r, -abs(self.vx) * 0.7
         if self.y < top + 2 * r and self.vy < 0:
             self.vy = abs(self.vy) * 0.5
-        g = ground_at(self.x) or (top + 500)
+        g = self.support(self.y - self.vy * dt)
         if self.y >= g:
             self.y = g
             if self.vy > 160:
@@ -648,5 +689,402 @@ class Ball(Item):
         p.restore()
 
 
-ITEM_ORDER = ["sofa", "picnic", "pelota", "trampolin", "fogata", "tele", "cama", "pesas",
-              "barra", "caja", "patineta", "maceta", "pizza", "libro", "guitarra", "bocina"]
+
+
+
+# ============================================================================
+# Instrumentos
+@item_type
+class Piano(Item):
+    key, label, W, HH = "piano", "Piano", 1.7, 1.15
+
+    def make_slots(self):
+        return [Slot(-0.55, 1, "o_piano", seat=0.44)]
+
+    def draw(self, p):
+        H = self.H
+        wood(p, QRectF(-0.25 * H, -1.15 * H, 1.05 * H, 1.15 * H), "#1F1A17", 5)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor("#F8FAFC"))
+        p.drawRect(QRectF(-0.42 * H, -0.76 * H, 0.2 * H, 0.06 * H))
+        p.setBrush(QColor("#111"))
+        for i in range(4):
+            p.drawRect(QRectF((-0.41 + i * 0.05) * H, -0.76 * H, 0.025 * H, 0.03 * H))
+        p.setBrush(QColor("#2A221D"))
+        p.drawRect(QRectF(-0.45 * H, -0.7 * H, 0.25 * H, 0.05 * H))
+        wood(p, QRectF(-0.72 * H, -0.44 * H, 0.34 * H, 0.06 * H), "#5B3A1E")
+        p.setPen(QPen(QColor("#5B3A1E"), 0.04 * H))
+        p.drawLine(QPointF(-0.68 * H, -0.4 * H), QPointF(-0.68 * H, 0))
+        p.drawLine(QPointF(-0.42 * H, -0.4 * H), QPointF(-0.42 * H, 0))
+
+
+@item_type
+class Drums(Item):
+    key, label, W, HH = "bateria", "Batería", 1.7, 1.05
+
+    def make_slots(self):
+        return [Slot(-0.6, 1, "o_bateria", seat=0.44)]
+
+    def draw(self, p):
+        H, t = self.H, self.t
+        hit = 0.03 * H * abs(math.sin(t * 14)) if self.slots[0].user is not None else 0.0
+        wood(p, QRectF(-0.82 * H, -0.44 * H, 0.32 * H, 0.06 * H), "#374151")
+        p.setPen(QPen(QColor("#374151"), 0.035 * H))
+        p.drawLine(QPointF(-0.66 * H, -0.4 * H), QPointF(-0.66 * H, 0))
+        p.setPen(QPen(QColor("#7F1D1D"), 2))
+        p.setBrush(QColor("#DC2626"))
+        p.drawEllipse(QPointF(0.35 * H, -0.32 * H), 0.32 * H, 0.32 * H)
+        p.setBrush(QColor("#FEE2E2"))
+        p.drawEllipse(QPointF(0.35 * H, -0.32 * H), 0.2 * H, 0.2 * H)
+        p.setBrush(QColor("#DC2626"))
+        p.drawRoundedRect(QRectF(-0.25 * H, -0.62 * H, 0.38 * H, 0.16 * H), 4, 4)
+        p.setPen(QPen(QColor("#6B7280"), 0.02 * H))
+        p.drawLine(QPointF(0.85 * H, 0), QPointF(0.85 * H, -0.95 * H))
+        p.setPen(QPen(QColor("#CA8A04"), 0.035 * H, Qt.SolidLine, Qt.RoundCap))
+        p.drawLine(QPointF(0.62 * H, -0.95 * H - hit), QPointF(1.08 * H, -0.95 * H + hit))
+
+
+@item_type
+class Trumpet(Item):
+    key, label, W, HH = "trompeta", "Trompeta", 0.6, 0.16
+
+    def make_slots(self):
+        return [Slot(0.0, 0, "o_trompeta", hide=True)]
+
+    def draw(self, p):
+        H = self.H
+        p.setPen(QPen(QColor("#EAB308"), 0.03 * H, Qt.SolidLine, Qt.RoundCap))
+        p.drawLine(QPointF(-0.25 * H, -0.07 * H), QPointF(0.15 * H, -0.07 * H))
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor("#EAB308"))
+        p.drawPolygon(QPolygonF([QPointF(0.12 * H, -0.09 * H), QPointF(0.28 * H, -0.15 * H),
+                                 QPointF(0.28 * H, 0.0), QPointF(0.12 * H, -0.05 * H)]))
+
+
+@item_type
+class Violin(Item):
+    key, label, W, HH = "violin", "Violín", 0.7, 0.16
+
+    def make_slots(self):
+        return [Slot(0.0, 0, "o_violin", hide=True)]
+
+    def draw(self, p):
+        H = self.H
+        p.setPen(QPen(QColor("#5B2C0A"), 1))
+        p.setBrush(QColor("#B45309"))
+        p.drawEllipse(QPointF(-0.12 * H, -0.07 * H), 0.16 * H, 0.07 * H)
+        p.setPen(QPen(QColor("#3B1F0A"), 0.025 * H, Qt.SolidLine, Qt.RoundCap))
+        p.drawLine(QPointF(0.04 * H, -0.07 * H), QPointF(0.3 * H, -0.07 * H))
+
+
+@item_type
+class Mic(Item):
+    key, label, W, HH = "microfono", "Micrófono", 0.5, 1.15
+
+    def make_slots(self):
+        return [Slot(-0.38, 1, "o_cantar")]
+
+    def draw(self, p):
+        H, t = self.H, self.t
+        p.setPen(QPen(QColor("#374151"), 0.03 * H, Qt.SolidLine, Qt.RoundCap))
+        p.drawLine(QPointF(0, 0), QPointF(0, -0.95 * H))
+        p.drawLine(QPointF(-0.18 * H, 0), QPointF(0.18 * H, 0))
+        p.drawLine(QPointF(0, -0.95 * H), QPointF(-0.12 * H, -1.03 * H))
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor("#9CA3AF"))
+        p.drawEllipse(QPointF(-0.14 * H, -1.05 * H), 0.05 * H, 0.05 * H)
+        if self.slots[0].user is not None:
+            f = QFont()
+            f.setPixelSize(int(0.18 * H))
+            p.setFont(f)
+            for i in range(2):
+                k = (t * 0.7 + i / 2) % 1.0
+                c = QColor.fromHsvF((t * 0.1 + i * 0.4) % 1.0, 0.7, 0.9)
+                c.setAlphaF(1 - k)
+                p.setPen(c)
+                p.drawText(QPointF(0.1 * H + 0.15 * H * math.sin(t * 2 + i), -(1.1 + 0.4 * k) * H), "♪")
+
+
+# ============================================================================
+# Más objetos
+@item_type
+class TableChairs(Item):
+    key, label, W, HH = "mesa", "Mesa con sillas", 2.4, 0.95
+
+    def make_slots(self):
+        return [Slot(-0.85, 1, ["o_comer", "o_cartas"], seat=0.44),
+                Slot(0.85, -1, ["o_comer", "o_cartas"], seat=0.44)]
+
+    def draw(self, p):
+        H = self.H
+        for sx in (-1, 1):
+            wood(p, QRectF(sx * 0.85 * H - 0.18 * H, -0.44 * H, 0.36 * H, 0.06 * H), "#92400E")
+            p.setPen(QPen(QColor("#78350F"), 0.04 * H, Qt.SolidLine, Qt.RoundCap))
+            back = sx * 1.05 * H
+            p.drawLine(QPointF(back, 0), QPointF(back, -0.95 * H))
+            p.drawLine(QPointF(sx * 0.68 * H, -0.4 * H), QPointF(sx * 0.68 * H, 0))
+        p.setPen(QPen(QColor("#78350F"), 0.05 * H, Qt.SolidLine, Qt.RoundCap))
+        for x in (-0.45, 0.45):
+            p.drawLine(QPointF(x * H, -0.7 * H), QPointF(x * H, 0))
+        wood(p, QRectF(-0.6 * H, -0.76 * H, 1.2 * H, 0.08 * H), "#B45309")
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor("#F8FAFC"))
+        p.drawEllipse(QPointF(0, -0.79 * H), 0.12 * H, 0.03 * H)
+
+
+@item_type
+class Swing(Item):
+    key, label, W, HH = "columpio", "Columpio", 1.9, 1.95
+    PIVOT, ROPE = 1.88, 1.42
+
+    def __init__(self, *a):
+        super().__init__(*a)
+        self.swing = 0.0
+        self.amp = 0.0
+
+    def make_slots(self):
+        return [Slot(0.0, 0, "o_columpio", seat=0.0)]
+
+    def angle(self):
+        return self.amp * math.sin(self.t * 2.4)
+
+    def extra_tick(self, dt):
+        used = self.slots[0].user is not None and self.slots[0].user.state == "act"
+        self.amp += ((0.6 if used else 0.0) - self.amp) * min(1.0, dt * (0.5 if used else 0.8))
+        self.swing = self.angle()
+
+    def seat_point(self):
+        a = self.angle()
+        return QPointF(math.sin(a) * self.ROPE * self.H, (-self.PIVOT + math.cos(a) * self.ROPE) * self.H)
+
+    def slot_pos(self, slot, s):
+        sp = self.seat_point()
+        return self.x + sp.x(), self.y + sp.y() + 0.02 * self.H
+
+    def draw(self, p):
+        H = self.H
+        p.setPen(QPen(QColor("#2563EB"), 0.05 * H, Qt.SolidLine, Qt.RoundCap))
+        for sx in (-1, 1):
+            p.drawLine(QPointF(sx * 0.9 * H, 0), QPointF(sx * 0.7 * H, -self.PIVOT * H))
+        p.drawLine(QPointF(-0.75 * H, -self.PIVOT * H), QPointF(0.75 * H, -self.PIVOT * H))
+        sp = self.seat_point()
+        p.setPen(QPen(QColor("#6B7280"), 0.015 * H))
+        p.drawLine(QPointF(0, -self.PIVOT * H), sp)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor("#F59E0B"))
+        p.save()
+        p.translate(sp)
+        p.rotate(math.degrees(-self.angle()))
+        p.drawRoundedRect(QRectF(-0.16 * H, 0, 0.32 * H, 0.05 * H), 3, 3)
+        p.restore()
+
+
+@item_type
+class Slide(Item):
+    key, label, W, HH = "resbaladilla", "Resbaladilla", 2.4, 1.45
+
+    def make_slots(self):
+        return [Slot(-0.95, 1, "o_resbaladilla", seat=0.0, no_climb=True)]
+
+    def slot_pos(self, slot, s):
+        H = self.H
+        u = max(0.0, s.act_u) if s.state == "act" and s.item is self else 0.0
+        if u < 0.4:
+            k = smooth(u / 0.4)
+            return self.x - 0.95 * H, self.y - (0.47 + 0.85 * k) * H
+        if u < 0.45:
+            return self.x - 0.78 * H, self.y - 1.33 * H
+        if u < 0.88:
+            k = ((u - 0.45) / 0.43) ** 1.6
+            return self.x + (-0.78 + 1.95 * k) * H, self.y - (1.33 - 1.0 * k) * H
+        return self.x + 1.3 * H, self.y - 0.4 * H
+
+    def draw(self, p):
+        H = self.H
+        p.setPen(QPen(QColor("#475569"), 0.04 * H, Qt.SolidLine, Qt.RoundCap))
+        for x in (-1.05, -0.85):
+            p.drawLine(QPointF(x * H, 0), QPointF(x * H, -1.35 * H))
+        for i in range(6):
+            y = -0.2 * H - i * 0.2 * H
+            p.drawLine(QPointF(-1.05 * H, y), QPointF(-0.85 * H, y))
+        p.setPen(QPen(QColor("#EF4444"), 0.08 * H, Qt.SolidLine, Qt.RoundCap))
+        p.drawLine(QPointF(-0.8 * H, -1.32 * H), QPointF(1.15 * H, -0.12 * H))
+        p.setPen(QPen(QColor("#475569"), 0.035 * H))
+        p.drawLine(QPointF(0.2 * H, -0.7 * H), QPointF(0.2 * H, 0))
+
+
+@item_type
+class Pool(Item):
+    key, label, W, HH = "alberca", "Alberca inflable", 1.8, 0.42
+    layer = 3          # se dibuja enfrente: el que está adentro queda "en el agua"
+
+    def make_slots(self):
+        return [Slot(-0.35, 1, "o_alberca", floor=0.04), Slot(0.4, -1, "o_alberca", floor=0.04)]
+
+    def draw(self, p):
+        H, t = self.H, self.t
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(56, 189, 248, 170))
+        p.drawRoundedRect(QRectF(-0.85 * H, -0.36 * H, 1.7 * H, 0.32 * H), 0.1 * H, 0.1 * H)
+        p.setBrush(QColor("#38BDF8"))
+        wave = [QPointF((-0.85 + 0.1 * i) * H, -0.34 * H + 0.015 * H * math.sin(t * 3 + i)) for i in range(18)]
+        p.setPen(QPen(QColor("#E0F2FE"), 0.02 * H))
+        p.drawPolyline(QPolygonF(wave))
+        p.setPen(Qt.NoPen)
+        for i, c in enumerate(("#F472B6", "#FDE047", "#60A5FA")):
+            p.setBrush(QColor(c))
+            p.drawRoundedRect(QRectF(-0.9 * H, -0.12 * H * (i + 1), 1.8 * H, 0.12 * H), 0.06 * H, 0.06 * H)
+        if any(sl.user is not None for sl in self.slots):
+            p.setBrush(QColor(186, 230, 253, 220))
+            for i in range(6):
+                k = (t * 1.6 + i / 6) % 1.0
+                x = (-0.5 + (i % 3) * 0.4) * H + 0.2 * H * k * (1 if i % 2 else -1)
+                p.drawEllipse(QPointF(x, -0.4 * H - 0.5 * H * math.sin(k * math.pi)), 0.025 * H, 0.025 * H)
+
+
+@item_type
+class Easel(Item):
+    key, label, W, HH = "caballete", "Caballete de pintura", 0.9, 1.45
+
+    def __init__(self, *a):
+        super().__init__(*a)
+        self.strokes = []
+        self.st_t = 0.0
+
+    def make_slots(self):
+        return [Slot(-0.62, 1, "o_pintar")]
+
+    def extra_tick(self, dt):
+        u = self.slots[0].user
+        if u is not None and u.state == "act" and len(self.strokes) < 45:
+            self.st_t -= dt
+            if self.st_t <= 0:
+                self.st_t = 0.25
+                c = QColor.fromHsvF(random.random(), random.uniform(0.5, 1), random.uniform(0.6, 1))
+                x0, y0 = random.uniform(-0.2, 0.2), random.uniform(-1.3, -0.82)
+                self.strokes.append((c, x0, y0, x0 + random.uniform(-0.12, 0.12), y0 + random.uniform(-0.1, 0.1)))
+
+    def extra_menu(self, menu):
+        menu.addAction(tr("Lienzo nuevo")).triggered.connect(lambda: self.strokes.clear())
+
+    def draw(self, p):
+        H = self.H
+        p.setPen(QPen(QColor("#92400E"), 0.035 * H, Qt.SolidLine, Qt.RoundCap))
+        p.drawLine(QPointF(-0.3 * H, 0), QPointF(0, -1.4 * H))
+        p.drawLine(QPointF(0.3 * H, 0), QPointF(0, -1.4 * H))
+        p.drawLine(QPointF(0, -1.0 * H), QPointF(0.15 * H, 0))
+        p.setPen(QPen(QColor("#D6D3D1"), 1))
+        p.setBrush(QColor("#FFFFFF"))
+        p.drawRect(QRectF(-0.27 * H, -1.36 * H, 0.54 * H, 0.6 * H))
+        for c, x0, y0, x1, y1 in self.strokes:
+            p.setPen(QPen(c, 0.03 * H, Qt.SolidLine, Qt.RoundCap))
+            p.drawLine(QPointF(x0 * H, y0 * H), QPointF(x1 * H, y1 * H))
+        wood(p, QRectF(-0.3 * H, -0.78 * H, 0.6 * H, 0.04 * H), "#92400E")
+
+
+@item_type
+class Desk(Item):
+    key, label, W, HH = "escritorio", "Escritorio con compu", 1.6, 1.2
+
+    def make_slots(self):
+        return [Slot(-0.45, 1, "o_compu", seat=0.44)]
+
+    def draw(self, p):
+        H, t = self.H, self.t
+        wood(p, QRectF(-0.62 * H, -0.44 * H, 0.32 * H, 0.06 * H), "#334155")
+        p.setPen(QPen(QColor("#334155"), 0.035 * H))
+        p.drawLine(QPointF(-0.46 * H, -0.4 * H), QPointF(-0.46 * H, 0))
+        p.drawLine(QPointF(-0.62 * H, -0.44 * H), QPointF(-0.64 * H, -0.82 * H))
+        p.setPen(QPen(QColor("#78350F"), 0.05 * H))
+        for x in (-0.1, 0.72):
+            p.drawLine(QPointF(x * H, -0.68 * H), QPointF(x * H, 0))
+        wood(p, QRectF(-0.2 * H, -0.74 * H, 1.0 * H, 0.07 * H), "#A16207")
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor("#111827"))
+        p.drawRect(QRectF(0.3 * H, -1.2 * H, 0.42 * H, 0.32 * H))
+        p.drawRect(QRectF(0.48 * H, -0.88 * H, 0.06 * H, 0.14 * H))
+        on = self.slots[0].user is not None
+        p.setBrush(QColor("#1E3A8A") if on else QColor("#1F2937"))
+        p.drawRect(QRectF(0.33 * H, -1.17 * H, 0.36 * H, 0.26 * H))
+        if on:
+            for i in range(5):
+                w = (0.08 + 0.2 * abs(math.sin(i * 1.7 + int(t * 3) * 0.5))) * H
+                p.setBrush(QColor("#93C5FD") if i % 2 else QColor("#86EFAC"))
+                p.drawRect(QRectF(0.36 * H, (-1.14 + i * 0.045) * H, w, 0.02 * H))
+        p.setBrush(QColor("#E5E7EB"))
+        p.drawRect(QRectF(0.05 * H, -0.77 * H, 0.22 * H, 0.03 * H))
+
+
+@item_type
+class Hammock(Item):
+    key, label, W, HH = "hamaca", "Hamaca", 2.3, 1.05
+
+    def make_slots(self):
+        return [Slot(0.0, 1, "o_hamaca", seat=0.0)]
+
+    def slot_pos(self, slot, s):
+        return self.x + 0.05 * self.H * math.sin(self.t * 1.2), self.y - 0.48 * self.H
+
+    def draw(self, p):
+        H = self.H
+        sway = 0.05 * H * math.sin(self.t * 1.2)
+        p.setPen(QPen(QColor("#78350F"), 0.07 * H, Qt.SolidLine, Qt.RoundCap))
+        for sx in (-1, 1):
+            p.drawLine(QPointF(sx * 1.08 * H, 0), QPointF(sx * 1.08 * H, -1.0 * H))
+        path = QPainterPath(QPointF(-1.05 * H, -0.85 * H))
+        path.quadTo(QPointF(sway, -0.1 * H), QPointF(1.05 * H, -0.85 * H))
+        p.setPen(QPen(QColor("#F97316"), 0.06 * H, Qt.SolidLine, Qt.RoundCap))
+        p.setBrush(Qt.NoBrush)
+        p.drawPath(path)
+        p.setPen(QPen(QColor("#FDE047"), 0.02 * H, Qt.SolidLine, Qt.RoundCap))
+        p.drawPath(path)
+
+
+@item_type
+class Grill(Item):
+    key, label, W, HH = "asador", "Asador", 0.9, 0.9
+
+    def make_slots(self):
+        return [Slot(-0.62, 1, "o_asar")]
+
+    def draw(self, p):
+        H, t = self.H, self.t
+        p.setPen(QPen(QColor("#111827"), 0.035 * H, Qt.SolidLine, Qt.RoundCap))
+        for x in (-0.3, 0.3):
+            p.drawLine(QPointF(x * 0.6 * H, -0.5 * H), QPointF(x * H, 0))
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor("#1F2937"))
+        p.drawChord(QRectF(-0.35 * H, -0.85 * H, 0.7 * H, 0.7 * H), 180 * 16, 180 * 16)
+        p.setBrush(QColor("#B45309"))
+        for x in (-0.15, 0.05, 0.2):
+            p.drawRoundedRect(QRectF(x * H, -0.56 * H, 0.12 * H, 0.04 * H), 3, 3)
+        if self.slots[0].user is not None:
+            for i in range(3):
+                k = (t * 0.5 + i / 3) % 1.0
+                c = QColor(200, 200, 200, int(150 * (1 - k)))
+                p.setBrush(c)
+                p.drawEllipse(QPointF((0.05 * math.sin(t + i * 2)) * H + (i - 1) * 0.1 * H, -(0.65 + 0.6 * k) * H),
+                              (0.05 + 0.06 * k) * H, (0.05 + 0.06 * k) * H)
+
+
+@item_type
+class Tree(Item):
+    key, label, W, HH = "arbol", "Árbol", 1.7, 2.4
+
+    def make_slots(self):
+        return [Slot(0.28, 1, "o_arbol", seat=0.07), Slot(-0.28, -1, "o_arbol", seat=0.07)]
+
+    def draw(self, p):
+        H, t = self.H, self.t
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor("#78350F"))
+        p.drawPolygon(QPolygonF([QPointF(-0.14 * H, 0), QPointF(0.14 * H, 0), QPointF(0.09 * H, -1.4 * H),
+                                 QPointF(-0.09 * H, -1.4 * H)]))
+        for i, (x, y, r) in enumerate(((0, -1.75, 0.62), (-0.42, -1.45, 0.42), (0.45, -1.5, 0.45),
+                                       (0.1, -2.05, 0.38))):
+            sway = 0.03 * H * math.sin(t * 1.3 + i)
+            p.setBrush(QColor("#16A34A") if i % 2 else QColor("#22C55E"))
+            p.drawEllipse(QPointF(x * H + sway, y * H), r * H, r * H * 0.85)
+        p.setBrush(QColor("#EF4444"))
+        for x, y in ((-0.3, -1.5), (0.35, -1.65), (0.05, -1.95)):
+            p.drawEllipse(QPointF(x * H, y * H), 0.05 * H, 0.05 * H)
